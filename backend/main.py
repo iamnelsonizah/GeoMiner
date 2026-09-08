@@ -158,6 +158,7 @@ def validate_and_get_ee_geometry(req: ExplorationRequest) -> ee.Geometry:
 
 @app.get("/")
 @app.get("/health")
+@app.get("//health")
 @app.get("/api/health")
 def health_check():
     """Health check endpoint supporting cloud platforms (Railway, Render, AWS, GCP)."""

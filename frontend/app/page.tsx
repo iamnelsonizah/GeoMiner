@@ -214,16 +214,17 @@ export default function GeoMinerPage() {
     const checkBackend = async () => {
       // Prioritize configured URL, then IPv4 127.0.0.1:8000, then localhost:8000
       const candidates = Array.from(new Set([
-        process.env.NEXT_PUBLIC_BACKEND_URL,
+        (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/+$/, ''),
         'http://127.0.0.1:8000',
         'http://localhost:8000',
       ].filter(Boolean))) as string[];
 
       let connected = false;
-      for (const url of candidates) {
+      for (const rawUrl of candidates) {
+        const url = rawUrl.replace(/\/+$/, '');
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2500);
+          const timeoutId = setTimeout(() => controller.abort(), 3500);
           const resp = await fetch(`${url}/health`, { signal: controller.signal });
           clearTimeout(timeoutId);
           if (resp.ok) {

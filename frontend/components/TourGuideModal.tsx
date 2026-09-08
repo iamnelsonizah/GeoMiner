@@ -201,15 +201,15 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-2xl bg-[#0F141C] border border-[#2A364F] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-2xl bg-[#0F141C] border border-[#2A364F] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tour-title"
       >
         {/* Top Progress Bar */}
-        <div className="w-full bg-[#1A2232] h-1.5">
+        <div className="w-full bg-[#1A2232] h-1.5 shrink-0">
           <div 
             className="h-full bg-gradient-to-r from-[#C8963E] via-[#4E8C85] to-[#3498DB] transition-all duration-300 ease-out"
             style={{ width: `${((currentStepIndex + 1) / TOUR_STEPS.length) * 100}%` }}
@@ -217,24 +217,24 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2A364F] bg-[#141B26]">
-          <div className="flex items-center space-x-3">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#2A364F] bg-[#141B26] shrink-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
             <div 
-              className="p-2 rounded-lg"
+              className="p-1.5 sm:p-2 rounded-lg shrink-0"
               style={{ backgroundColor: `${currentStep.accentColor}20`, color: currentStep.accentColor }}
             >
-              <StepIcon className="w-5 h-5" />
+              <StepIcon className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center space-x-2">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/30 uppercase tracking-wider">
+                <span className="text-[10px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/30 uppercase tracking-wider">
                   {currentStep.badge}
                 </span>
-                <span className="text-xs text-[#6B7A90]">
+                <span className="text-[10px] sm:text-xs text-[#6B7A90]">
                   Step {currentStepIndex + 1} of {TOUR_STEPS.length}
                 </span>
               </div>
-              <h2 id="tour-title" className="text-lg font-bold text-white mt-0.5">
+              <h2 id="tour-title" className="text-base sm:text-lg font-bold text-white mt-0.5 truncate">
                 {currentStep.title}
               </h2>
             </div>
@@ -242,15 +242,15 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
 
           <button
             onClick={handleComplete}
-            className="p-1.5 text-[#6B7A90] hover:text-white rounded-lg hover:bg-[#1E2638] transition-colors"
+            className="p-1.5 text-[#6B7A90] hover:text-white rounded-lg hover:bg-[#1E2638] transition-colors shrink-0 ml-2"
             title="Close Tour"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Scrollable Body Content */}
-        <div className="p-6 overflow-y-auto space-y-4 text-sm text-[#AAB4C2]">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm text-[#AAB4C2]">
           {/* Summary */}
           <p className="text-white text-base leading-relaxed">
             {currentStep.summary}
@@ -296,19 +296,19 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
         </div>
 
         {/* Footer Navigation */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[#2A364F] bg-[#141B26]">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-t border-[#2A364F] bg-[#141B26] shrink-0">
           {/* Step indicator dots */}
-          <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-1 sm:space-x-1.5">
             {TOUR_STEPS.map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => setCurrentStepIndex(idx)}
-                className={`h-2 rounded-full transition-all duration-200 ${
+                className={`h-1.5 sm:h-2 rounded-full transition-all duration-200 ${
                   idx === currentStepIndex 
-                    ? 'w-6 bg-[#C8963E]' 
+                    ? 'w-4 sm:w-6 bg-[#C8963E]' 
                     : idx < currentStepIndex 
-                    ? 'w-2 bg-[#4E8C85]' 
-                    : 'w-2 bg-[#2A364F] hover:bg-[#3E4E6B]'
+                    ? 'w-1.5 sm:w-2 bg-[#4E8C85]' 
+                    : 'w-1.5 sm:w-2 bg-[#2A364F] hover:bg-[#3E4E6B]'
                 }`}
                 title={`Go to step ${idx + 1}`}
               />
@@ -321,7 +321,7 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
             {currentStep.actionText && (
               <button
                 onClick={() => handleActionClick(currentStep.actionDistrict)}
-                className="hidden sm:inline-flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/40 hover:bg-[#C8963E]/10 transition-colors font-medium mr-2"
+                className="hidden md:inline-flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/40 hover:bg-[#C8963E]/10 transition-colors font-medium mr-1"
               >
                 <span>{currentStep.actionText}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -331,25 +331,25 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
             {!isFirstStep && (
               <button
                 onClick={handlePrev}
-                className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-[#1E2638] text-white hover:bg-[#28344C] text-xs font-semibold border border-[#2A364F] transition-colors"
+                className="inline-flex items-center space-x-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#1E2638] text-white hover:bg-[#28344C] text-xs font-semibold border border-[#2A364F] transition-colors"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3.5 h-3.5" />
                 <span>Back</span>
               </button>
             )}
 
             <button
               onClick={handleNext}
-              className="inline-flex items-center space-x-1.5 px-4 py-1.5 rounded-lg bg-[#C8963E] text-[#0A0D14] hover:bg-[#DBA84E] text-xs font-bold transition-all shadow-md active:scale-95"
+              className="inline-flex items-center space-x-1.5 px-3.5 sm:px-4 py-1.5 rounded-lg bg-[#C8963E] text-[#0A0D14] hover:bg-[#DBA84E] text-xs font-bold transition-all shadow-md active:scale-95"
             >
-              <span>{isLastStep ? "Start Exploring" : "Next Step"}</span>
-              {isLastStep ? <CheckCircle2 className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              <span>{isLastStep ? "Start Exploring" : "Next"}</span>
+              {isLastStep ? <CheckCircle2 className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>
 
         {/* Bottom Status / Don't show again toggle */}
-        <div className="px-6 py-2 bg-[#0C1017] border-t border-[#1F2738] flex items-center justify-between text-[11px] text-[#6B7A90]">
+        <div className="px-4 sm:px-6 py-2 bg-[#0C1017] border-t border-[#1F2738] flex items-center justify-between text-[10px] sm:text-[11px] text-[#6B7A90] shrink-0">
           <label className="flex items-center space-x-2 cursor-pointer hover:text-[#AAB4C2] select-none">
             <input
               type="checkbox"
@@ -362,7 +362,7 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
               }}
               className="rounded border-[#2A364F] bg-[#141B26] text-[#C8963E] focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5"
             />
-            <span>Do not show tour on startup</span>
+            <span>Do not show on startup</span>
           </label>
 
           <span className="hidden sm:inline">

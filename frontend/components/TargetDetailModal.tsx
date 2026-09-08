@@ -27,11 +27,11 @@ export default function TargetDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-      <div className="bg-[#141B26] border border-[#2E3A4C] w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm">
+      <div className="bg-[#141B26] border border-[#2E3A4C] w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90dvh]">
         
         {/* Header */}
-        <div className="p-4 border-b border-[#2E3A4C] flex items-center justify-between bg-[#1B2331]">
+        <div className="p-3.5 sm:p-4 border-b border-[#2E3A4C] flex items-center justify-between bg-[#1B2331] shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="text-[14px] font-semibold text-[#E9E4D6] mono">
               {target.target_id}
@@ -50,7 +50,7 @@ export default function TargetDetailModal({
         </div>
 
         {/* Content Body */}
-        <div className="p-4 space-y-4">
+        <div className="p-3.5 sm:p-4 space-y-4 overflow-y-auto">
           
           {/* Metrics Row */}
           <div className="grid grid-cols-2 gap-2.5">

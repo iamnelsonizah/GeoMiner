@@ -1,5 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#141B26",
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   title: "GeoMiner — Mineral Exploration Targeting System",
@@ -21,7 +30,7 @@ export default function RootLayout({
           rel="stylesheet" 
         />
       </head>
-      <body className="min-h-full bg-[#0A0D12] text-[#B7BFCB] overflow-hidden" suppressHydrationWarning>
+      <body className="h-[100dvh] w-full bg-[#0A0D12] text-[#B7BFCB] overflow-hidden" suppressHydrationWarning>
         {children}
       </body>
     </html>

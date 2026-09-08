@@ -113,6 +113,28 @@ function MapController({
     });
   }, [center, zoom, map]);
 
+  // Handle mobile drawer open/close and window resize
+  useEffect(() => {
+    if (!map) return;
+    const handleInvalidate = () => {
+      try {
+        if ((map as any)._loaded) {
+          map.invalidateSize();
+        }
+      } catch {}
+    };
+
+    window.addEventListener('resize', handleInvalidate);
+    window.addEventListener('map-invalidate-size', handleInvalidate);
+    const timer = setTimeout(handleInvalidate, 200);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleInvalidate);
+      window.removeEventListener('map-invalidate-size', handleInvalidate);
+    };
+  }, [map]);
+
   useEffect(() => {
     if (!map || !onZoomChange) return;
     const handleZoom = () => {

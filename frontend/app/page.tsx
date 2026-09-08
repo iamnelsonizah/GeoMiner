@@ -256,6 +256,17 @@ export default function GeoMinerPage() {
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'map' | 'layers' | 'targets'>('map');
 
+  const switchMobileTab = useCallback((tab: 'map' | 'layers' | 'targets') => {
+    setMobileTab(tab);
+    if (tab === 'map') {
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('map-invalidate-size'));
+        }
+      }, 120);
+    }
+  }, []);
+
   // Auto-launch tour for first-time visitors unless disabled
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -569,51 +580,52 @@ export default function GeoMinerPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#141B26] text-[#B7BFCB]">
+    <div className="flex flex-col h-[100dvh] w-full max-w-full overflow-hidden bg-[#141B26] text-[#B7BFCB]">
       
       {/* Top Bar */}
-      <header className="flex items-center justify-between px-5 py-3 border-b border-[#2E3A4C] shrink-0 bg-[#141B26] z-[2000]">
-        <div className="flex items-center">
-          <div className="flex items-center gap-3">
-            <svg className="w-7 h-7" viewBox="0 0 28 28" fill="none">
+      <header className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3 border-b border-[#2E3A4C] shrink-0 bg-[#141B26] z-[2000]">
+        <div className="flex items-center min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <svg className="w-6 h-6 sm:w-7 sm:h-7 shrink-0" viewBox="0 0 28 28" fill="none">
               <circle cx="14" cy="14" r="10.5" stroke="#8A6A32" strokeWidth="1.3" />
               <circle cx="14" cy="14" r="6.5" stroke="#C8963E" strokeWidth="1.3" />
               <circle cx="14" cy="14" r="1.6" fill="#C8963E" />
             </svg>
             <div>
-              <div className="text-[14px] font-semibold text-[#E9E4D6] tracking-[0.2px] leading-tight">
+              <div className="text-[13px] sm:text-[14px] font-semibold text-[#E9E4D6] tracking-[0.2px] leading-tight">
                 GeoMiner
               </div>
-              <div className="text-[10.5px] text-[#7C8798] mt-0.5 leading-none">
+              <div className="hidden md:block text-[10.5px] text-[#7C8798] mt-0.5 leading-none">
                 Remote sensing &amp; prospectivity targeting
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 ml-3">
-            <div className="text-[10px] text-[#C8963E] border border-[#8A6A32] px-2 py-0.5 tracking-[0.3px]">
-              EXPLORATION SUITE
+          <div className="flex items-center gap-1.5 sm:gap-2 ml-2 sm:ml-3 shrink-0">
+            <div className="hidden xs:block text-[9.5px] sm:text-[10px] text-[#C8963E] border border-[#8A6A32] px-1.5 sm:px-2 py-0.5 tracking-[0.3px]">
+              SUITE
             </div>
-            <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 border border-[#2E3A4C] bg-[#141B26] text-[10px] rounded-xs" title="Google Earth Engine Backend API status">
-              <span className={`w-1.5 h-1.5 rounded-full ${
+            <div className="flex items-center gap-1.5 px-2 py-0.5 border border-[#2E3A4C] bg-[#141B26] text-[10px] rounded-xs" title="Google Earth Engine Backend API status">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                 backendStatus === 'online' ? 'bg-[#4E8C85] animate-pulse' : backendStatus === 'checking' ? 'bg-[#C8963E]' : 'bg-[#E74C3C]'
               }`} />
               <span className={backendStatus === 'online' ? 'text-[#AAB4C2]' : backendStatus === 'checking' ? 'text-[#C8963E]' : 'text-[#E74C3C]'}>
-                {backendStatus === 'online' ? 'Engine Online' : backendStatus === 'checking' ? 'Connecting...' : 'Engine Offline'}
+                {backendStatus === 'online' ? 'Online' : backendStatus === 'checking' ? 'Connecting...' : 'Offline'}
               </span>
             </div>
             <button
               onClick={() => setIsTourOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-[#C8963E] bg-[#1E2638] hover:bg-[#28344C] hover:text-[#DBA84E] border border-[#C8963E]/40 rounded-xs transition-colors cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 text-[10.5px] sm:text-[11px] font-semibold text-[#C8963E] bg-[#1E2638] hover:bg-[#28344C] hover:text-[#DBA84E] border border-[#C8963E]/40 rounded-xs transition-colors cursor-pointer shrink-0"
               title="Open Guided Tour and Educational Field Guide"
             >
               <GraduationCap className="w-3.5 h-3.5 text-[#C8963E]" />
-              <span>Field Guide</span>
+              <span className="hidden sm:inline">Field Guide</span>
+              <span className="sm:hidden">Guide</span>
             </button>
           </div>
         </div>
 
         {/* Dynamic Global Location & Coordinates Readout */}
-        <div className="hidden md:flex items-center gap-2.5 bg-[#141B26] border border-[#2E3A4C] px-3 py-1.5 rounded-sm">
+        <div className="hidden lg:flex items-center gap-2.5 bg-[#141B26] border border-[#2E3A4C] px-3 py-1.5 rounded-sm">
           <MapPin className="w-3.5 h-3.5 text-[#C8963E] shrink-0" />
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-medium text-[#E9E4D6] max-w-[280px] truncate" title={locationLabel}>
@@ -626,10 +638,10 @@ export default function GeoMinerPage() {
         </div>
 
         {/* Right Top Actions */}
-        <div className="flex items-center gap-2 sm:gap-3.5">
+        <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
           <button
             onClick={() => setMaskVegetation(!maskVegetation)}
-            className="hidden sm:flex items-center gap-2 text-[11.5px] text-[#7C8798] hover:text-[#E9E4D6] transition-colors cursor-pointer"
+            className="hidden md:flex items-center gap-2 text-[11.5px] text-[#7C8798] hover:text-[#E9E4D6] transition-colors cursor-pointer"
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
@@ -642,7 +654,7 @@ export default function GeoMinerPage() {
           <button
             onClick={runProspectivityTargeting}
             disabled={isLoading}
-            className={`hidden sm:flex bg-[#C8963E] text-[#1B140A] border-none px-4 py-2 text-[12.5px] font-semibold tracking-[0.2px] items-center gap-2 transition-opacity cursor-pointer ${
+            className={`hidden sm:flex bg-[#C8963E] text-[#1B140A] border-none px-3.5 py-1.5 sm:px-4 sm:py-2 text-[12px] sm:text-[12.5px] font-semibold tracking-[0.2px] items-center gap-2 transition-opacity cursor-pointer shadow-sm ${
               isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#d8a548]'
             }`}
           >
@@ -662,7 +674,7 @@ export default function GeoMinerPage() {
         {/* Left Rail: Deposit Model & Layers (Desktop: sidebar, Mobile: slide-over drawer) */}
         <div className={`
           ${mobileTab === 'layers' 
-            ? 'fixed inset-0 z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto' 
+            ? 'fixed inset-x-0 top-0 bottom-[56px] z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto overscroll-contain' 
             : 'hidden lg:block'}
           lg:static lg:z-auto border-r border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26] space-y-4
         `}>
@@ -673,7 +685,7 @@ export default function GeoMinerPage() {
                 Deposit Models &amp; Layers
               </span>
               <button
-                onClick={() => setMobileTab('map')}
+                onClick={() => switchMobileTab('map')}
                 className="p-1.5 rounded-xs bg-[#1E2638] text-[#AAB4C2] hover:text-white border border-[#2E3A4C]"
               >
                 <X className="w-4 h-4" />
@@ -697,7 +709,7 @@ export default function GeoMinerPage() {
 
           {mobileTab === 'layers' && (
             <button
-              onClick={() => setMobileTab('map')}
+              onClick={() => switchMobileTab('map')}
               className="w-full lg:hidden mt-4 py-2.5 bg-[#C8963E] text-[#141B26] font-bold rounded-xs text-xs shrink-0"
             >
               Apply &amp; Return to Map
@@ -709,46 +721,50 @@ export default function GeoMinerPage() {
         <div className="flex flex-col h-full overflow-hidden bg-[#0D1218] relative">
           
           {/* Top Search Bar & Basemap Switcher */}
-          <div className="p-2.5 border-b border-[#2E3A4C] bg-[#141B26] z-[1500] relative flex items-center justify-between gap-3 shrink-0 flex-wrap">
-            <div className="flex items-center gap-2 flex-1 min-w-[300px]">
-              <MapSearchBar
-                onLocationSelect={(loc) => {
-                  setSearchLocation(loc);
-                  setMapCenter([loc.lat, loc.lng]);
-                  setMapZoom(13);
-                  setLocationLabel(loc.label);
-                  setAoiCoords([]);
-                  setTargets([]);
-                  setExcludedTargets([]);
-                  setTargetGeoJSON(null);
-                  setAreaStats(null);
-                  setSelectedTargetId(null);
-                  setTileUrls({});
-                  setError(null);
-                  setStatusMessage(`Navigated to ${loc.label}. Ready to generate targets.`);
-                }}
-              />
+          <div className="px-3 py-2 border-b border-[#2E3A4C] bg-[#141B26] z-[1500] relative flex flex-col gap-1.5 shrink-0">
+            <div className="flex items-center gap-2 w-full">
+              <div className="flex-1 min-w-0">
+                <MapSearchBar
+                  onLocationSelect={(loc) => {
+                    setSearchLocation(loc);
+                    setMapCenter([loc.lat, loc.lng]);
+                    setMapZoom(13);
+                    setLocationLabel(loc.label);
+                    setAoiCoords([]);
+                    setTargets([]);
+                    setExcludedTargets([]);
+                    setTargetGeoJSON(null);
+                    setAreaStats(null);
+                    setSelectedTargetId(null);
+                    setTileUrls({});
+                    setError(null);
+                    setStatusMessage(`Navigated to ${loc.label}. Ready to generate targets.`);
+                  }}
+                />
+              </div>
 
-              {/* Quick-Jump Exploration Province Bookmarks */}
-              <div className="hidden xl:flex items-center gap-1.5 overflow-x-auto">
-                <span className="text-[10px] text-[#7C8798] uppercase tracking-wider font-semibold mr-0.5 shrink-0">Bookmarks:</span>
-                {PROVINCE_BOOKMARKS.map((bm) => (
-                  <button
-                    key={bm.name}
-                    onClick={() => handleSelectBookmark(bm)}
-                    className="px-2 py-1 bg-[#1B2331] hover:bg-[#222E40] text-[10.5px] text-[#AAB4C2] hover:text-[#E9E4D6] border border-[#2E3A4C] hover:border-[#C8963E]/60 transition-colors rounded-xs whitespace-nowrap cursor-pointer flex items-center gap-1"
-                    title={`Fly to ${bm.name} (${bm.region})`}
-                  >
-                    <span>{bm.name}</span>
-                  </button>
-                ))}
+              <div className="shrink-0">
+                <BasemapSelector
+                  selectedBasemap={selectedBasemap}
+                  onSelectBasemap={setSelectedBasemap}
+                />
               </div>
             </div>
 
-            <BasemapSelector
-              selectedBasemap={selectedBasemap}
-              onSelectBasemap={setSelectedBasemap}
-            />
+            {/* Quick-Jump Exploration Province Bookmarks */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 -mx-1 px-1">
+              <span className="text-[10px] text-[#7C8798] uppercase tracking-wider font-semibold mr-0.5 shrink-0">Jump:</span>
+              {PROVINCE_BOOKMARKS.map((bm) => (
+                <button
+                  key={bm.name}
+                  onClick={() => handleSelectBookmark(bm)}
+                  className="px-2 py-1 bg-[#1B2331] hover:bg-[#222E40] text-[10.5px] text-[#AAB4C2] hover:text-[#E9E4D6] border border-[#2E3A4C] hover:border-[#C8963E]/60 transition-colors rounded-xs whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0"
+                  title={`Fly to ${bm.name} (${bm.region})`}
+                >
+                  <span>{bm.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Map Canvas */}
@@ -855,8 +871,8 @@ export default function GeoMinerPage() {
             )}
           </div>
 
-          {/* Bottom Status Bar */}
-          <div className="border-t border-[#2E3A4C] px-5 py-2.5 text-[12px] text-[#7C8798] flex items-center gap-2 shrink-0 bg-[#141B26] z-[500]">
+          {/* Bottom Status Bar (Desktop only, mobile has dock) */}
+          <div className="hidden lg:flex border-t border-[#2E3A4C] px-5 py-2.5 text-[12px] text-[#7C8798] items-center gap-2 shrink-0 bg-[#141B26] z-[500]">
             <span className="w-1.5 h-1.5 rounded-full bg-[#7C8798] shrink-0" />
             <span className="truncate">{error || statusMessage}</span>
           </div>
@@ -866,7 +882,7 @@ export default function GeoMinerPage() {
         {/* Right Rail: Results & Zonation (Desktop: sidebar, Mobile: slide-over drawer) */}
         <div className={`
           ${mobileTab === 'targets' 
-            ? 'fixed inset-0 z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto' 
+            ? 'fixed inset-x-0 top-0 bottom-[56px] z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto overscroll-contain' 
             : 'hidden lg:block'}
           lg:static lg:z-auto border-l border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26]
         `}>
@@ -877,7 +893,7 @@ export default function GeoMinerPage() {
                 Exploration Targets ({targets.length})
               </span>
               <button
-                onClick={() => setMobileTab('map')}
+                onClick={() => switchMobileTab('map')}
                 className="p-1.5 rounded-xs bg-[#1E2638] text-[#AAB4C2] hover:text-white border border-[#2E3A4C]"
               >
                 <X className="w-4 h-4" />
@@ -903,7 +919,7 @@ export default function GeoMinerPage() {
           />
           {mobileTab === 'targets' && (
             <button
-              onClick={() => setMobileTab('map')}
+              onClick={() => switchMobileTab('map')}
               className="w-full lg:hidden mt-4 py-2.5 bg-[#C8963E] text-[#141B26] font-bold rounded-xs text-xs shrink-0"
             >
               Back to Map View
@@ -914,30 +930,30 @@ export default function GeoMinerPage() {
       </div>
 
       {/* Mobile Bottom Navigation Dock (visible on mobile / tablet < 1024px) */}
-      <nav className="lg:hidden flex items-center justify-around px-2 py-2 border-t border-[#2E3A4C] bg-[#141B26] shrink-0 z-[2000] shadow-lg">
+      <nav className="lg:hidden flex items-center justify-around px-2 py-1.5 border-t border-[#2E3A4C] bg-[#141B26] shrink-0 z-[3000] shadow-lg pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <button
-          onClick={() => setMobileTab(mobileTab === 'layers' ? 'map' : 'layers')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
+          onClick={() => switchMobileTab(mobileTab === 'layers' ? 'map' : 'layers')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
             mobileTab === 'layers' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
           }`}
         >
           <SlidersHorizontal className="w-4 h-4" />
-          <span>Models &amp; Layers</span>
+          <span>Models</span>
         </button>
 
         <button
-          onClick={() => setMobileTab('map')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
+          onClick={() => switchMobileTab('map')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
             mobileTab === 'map' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
           }`}
         >
           <Globe className="w-4 h-4" />
-          <span>Map View</span>
+          <span>Map</span>
         </button>
 
         <button
-          onClick={() => setMobileTab(mobileTab === 'targets' ? 'map' : 'targets')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors relative ${
+          onClick={() => switchMobileTab(mobileTab === 'targets' ? 'map' : 'targets')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors relative ${
             mobileTab === 'targets' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
           }`}
         >
@@ -949,9 +965,12 @@ export default function GeoMinerPage() {
         </button>
 
         <button
-          onClick={runProspectivityTargeting}
+          onClick={() => {
+            switchMobileTab('map');
+            runProspectivityTargeting();
+          }}
           disabled={isLoading}
-          className="flex items-center gap-1.5 py-1.5 px-3 rounded-xs bg-[#C8963E] text-[#141B26] font-bold text-[11px] disabled:opacity-50 transition-transform active:scale-95 cursor-pointer"
+          className="flex items-center gap-1.5 py-1.5 px-3.5 rounded-xs bg-[#C8963E] text-[#141B26] font-bold text-[11px] disabled:opacity-50 transition-transform active:scale-95 cursor-pointer shadow-md"
         >
           {isLoading ? (
             <div className="w-3 h-3 rounded-full border-2 border-[#141B26] border-t-transparent animate-spin" />

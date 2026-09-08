@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   GripVertical, 
   Square, 
@@ -11,7 +11,9 @@ import {
   Trash2, 
   Upload, 
   Hand,
-  RotateCcw
+  RotateCcw,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 export type GeomanToolMode = 'pan' | 'rectangle' | 'polygon' | 'edit' | 'drag' | 'cut' | 'remove';
@@ -34,6 +36,14 @@ export default function DraggableGeomanToolbar({
   authoritativeAreaKm2
 }: DraggableGeomanToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Auto-collapse on small mobile screens to keep map view clear
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setIsCollapsed(true);
+    }
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,15 +84,44 @@ export default function DraggableGeomanToolbar({
     ? authoritativeAreaKm2.toFixed(2)
     : (aoiAreaHa > 0 ? (aoiAreaHa / 100).toFixed(2) : null);
 
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col bg-[#141B26]/95 backdrop-blur-md border border-[#2E3A4C] shadow-2xl rounded-sm overflow-hidden">
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-[#C8963E] bg-[#1B2331] hover:bg-[#212B3B] transition-colors cursor-pointer"
+          title="Expand Drawing Tools"
+        >
+          <Pentagon className="w-3.5 h-3.5 text-[#C8963E]" />
+          <span className="font-semibold">AOI Tools</span>
+          {aoiKm2 && <span className="text-[9px] text-[#7C8798] mono">({aoiKm2} km²)</span>}
+          <ChevronDown className="w-3 h-3 text-[#7C8798] ml-0.5" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col bg-[#141B26]/95 backdrop-blur-md border border-[#2E3A4C] shadow-2xl rounded-sm overflow-hidden min-w-[42px]">
       
-      {/* Drag Grip Handle */}
+      {/* Drag Grip Handle with Collapse Button */}
       <div 
-        className="flex items-center justify-center py-2 text-[#7C8798] hover:text-[#E9E4D6] cursor-grab active:cursor-grabbing border-b border-[#2E3A4C] bg-[#1B2331]"
-        title="Click and drag anywhere to move this toolbar"
+        className="flex items-center justify-between px-2 py-1.5 text-[#7C8798] border-b border-[#2E3A4C] bg-[#1B2331]"
       >
-        <GripVertical className="w-4 h-4" />
+        <div 
+          className="flex items-center gap-1 cursor-grab active:cursor-grabbing text-[10px] font-semibold text-[#AAB4C2]"
+          title="Click and drag to move toolbar"
+        >
+          <GripVertical className="w-3.5 h-3.5 text-[#7C8798]" />
+          <span className="text-[9px] uppercase tracking-wider text-[#7C8798]">AOI</span>
+        </div>
+        <button
+          onClick={() => setIsCollapsed(true)}
+          className="p-0.5 text-[#7C8798] hover:text-[#E9E4D6] cursor-pointer transition-colors"
+          title="Minimize toolbar"
+        >
+          <ChevronUp className="w-3 h-3" />
+        </button>
       </div>
 
       {/* Tools Vertical Strip */}

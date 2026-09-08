@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import { MapPin, Globe, X, GraduationCap, HelpCircle } from 'lucide-react';
+import { MapPin, Globe, X, GraduationCap, HelpCircle, SlidersHorizontal, Target, Play } from 'lucide-react';
 
 import CommoditySelector, { COMMODITY_MODELS } from '../components/CommoditySelector';
 import LayerControlPanel, { LayerState } from '../components/LayerControlPanel';
@@ -254,6 +254,7 @@ export default function GeoMinerPage() {
   }, []);
 
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+  const [mobileTab, setMobileTab] = useState<'map' | 'layers' | 'targets'>('map');
 
   // Auto-launch tour for first-time visitors unless disabled
   useEffect(() => {
@@ -612,7 +613,7 @@ export default function GeoMinerPage() {
         </div>
 
         {/* Dynamic Global Location & Coordinates Readout */}
-        <div className="flex items-center gap-2.5 bg-[#141B26] border border-[#2E3A4C] px-3 py-1.5 rounded-sm">
+        <div className="hidden md:flex items-center gap-2.5 bg-[#141B26] border border-[#2E3A4C] px-3 py-1.5 rounded-sm">
           <MapPin className="w-3.5 h-3.5 text-[#C8963E] shrink-0" />
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-medium text-[#E9E4D6] max-w-[280px] truncate" title={locationLabel}>
@@ -625,10 +626,10 @@ export default function GeoMinerPage() {
         </div>
 
         {/* Right Top Actions */}
-        <div className="flex items-center gap-3.5">
+        <div className="flex items-center gap-2 sm:gap-3.5">
           <button
             onClick={() => setMaskVegetation(!maskVegetation)}
-            className="flex items-center gap-2 text-[11.5px] text-[#7C8798] hover:text-[#E9E4D6] transition-colors cursor-pointer"
+            className="hidden sm:flex items-center gap-2 text-[11.5px] text-[#7C8798] hover:text-[#E9E4D6] transition-colors cursor-pointer"
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
@@ -641,7 +642,7 @@ export default function GeoMinerPage() {
           <button
             onClick={runProspectivityTargeting}
             disabled={isLoading}
-            className={`bg-[#C8963E] text-[#1B140A] border-none px-4 py-2 text-[12.5px] font-semibold tracking-[0.2px] flex items-center gap-2 transition-opacity cursor-pointer ${
+            className={`hidden sm:flex bg-[#C8963E] text-[#1B140A] border-none px-4 py-2 text-[12.5px] font-semibold tracking-[0.2px] items-center gap-2 transition-opacity cursor-pointer ${
               isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#d8a548]'
             }`}
           >
@@ -655,11 +656,30 @@ export default function GeoMinerPage() {
         </div>
       </header>
 
-      {/* Main 3-Column Layout */}
-      <div className="flex-1 grid grid-cols-[minmax(248px,280px)_minmax(0,1fr)_minmax(248px,280px)] overflow-hidden relative geoworkbench-grid">
+      {/* Main Workbench Layout */}
+      <div className="flex-1 flex lg:grid lg:grid-cols-[minmax(248px,280px)_minmax(0,1fr)_minmax(248px,280px)] overflow-hidden relative geoworkbench-grid">
         
-        {/* Left Rail: Deposit Model & Layers */}
-        <div className="border-r border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26] space-y-4">
+        {/* Left Rail: Deposit Model & Layers (Desktop: sidebar, Mobile: slide-over drawer) */}
+        <div className={`
+          ${mobileTab === 'layers' 
+            ? 'fixed inset-0 z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto' 
+            : 'hidden lg:block'}
+          lg:static lg:z-auto border-r border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26] space-y-4
+        `}>
+          {mobileTab === 'layers' && (
+            <div className="flex lg:hidden items-center justify-between pb-3 border-b border-[#2E3A4C] mb-2 shrink-0">
+              <span className="text-sm font-bold text-[#E9E4D6] flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-[#C8963E]" />
+                Deposit Models &amp; Layers
+              </span>
+              <button
+                onClick={() => setMobileTab('map')}
+                className="p-1.5 rounded-xs bg-[#1E2638] text-[#AAB4C2] hover:text-white border border-[#2E3A4C]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           <CommoditySelector
             selectedCommodity={selectedCommodity}
             onSelectCommodity={handleSelectCommodity}
@@ -674,6 +694,15 @@ export default function GeoMinerPage() {
             layers={layers}
             onToggleLayer={handleToggleLayer}
           />
+
+          {mobileTab === 'layers' && (
+            <button
+              onClick={() => setMobileTab('map')}
+              className="w-full lg:hidden mt-4 py-2.5 bg-[#C8963E] text-[#141B26] font-bold rounded-xs text-xs shrink-0"
+            >
+              Apply &amp; Return to Map
+            </button>
+          )}
         </div>
 
         {/* Center: Map Area */}
@@ -834,8 +863,27 @@ export default function GeoMinerPage() {
 
         </div>
 
-        {/* Right Rail: Results & Zonation */}
-        <div className="border-l border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26]">
+        {/* Right Rail: Results & Zonation (Desktop: sidebar, Mobile: slide-over drawer) */}
+        <div className={`
+          ${mobileTab === 'targets' 
+            ? 'fixed inset-0 z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto' 
+            : 'hidden lg:block'}
+          lg:static lg:z-auto border-l border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26]
+        `}>
+          {mobileTab === 'targets' && (
+            <div className="flex lg:hidden items-center justify-between pb-3 border-b border-[#2E3A4C] mb-3 shrink-0">
+              <span className="text-sm font-bold text-[#E9E4D6] flex items-center gap-2">
+                <Target className="w-4 h-4 text-[#C8963E]" />
+                Exploration Targets ({targets.length})
+              </span>
+              <button
+                onClick={() => setMobileTab('map')}
+                className="p-1.5 rounded-xs bg-[#1E2638] text-[#AAB4C2] hover:text-white border border-[#2E3A4C]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           <ProspectivityDashboard
             areaStats={areaStats}
             targets={targets}
@@ -853,9 +901,66 @@ export default function GeoMinerPage() {
             aoiAreaHa={aoiAreaHa}
             isLoading={isLoading}
           />
+          {mobileTab === 'targets' && (
+            <button
+              onClick={() => setMobileTab('map')}
+              className="w-full lg:hidden mt-4 py-2.5 bg-[#C8963E] text-[#141B26] font-bold rounded-xs text-xs shrink-0"
+            >
+              Back to Map View
+            </button>
+          )}
         </div>
 
       </div>
+
+      {/* Mobile Bottom Navigation Dock (visible on mobile / tablet < 1024px) */}
+      <nav className="lg:hidden flex items-center justify-around px-2 py-2 border-t border-[#2E3A4C] bg-[#141B26] shrink-0 z-[2000] shadow-lg">
+        <button
+          onClick={() => setMobileTab(mobileTab === 'layers' ? 'map' : 'layers')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
+            mobileTab === 'layers' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
+          }`}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          <span>Models &amp; Layers</span>
+        </button>
+
+        <button
+          onClick={() => setMobileTab('map')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
+            mobileTab === 'map' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+          <span>Map View</span>
+        </button>
+
+        <button
+          onClick={() => setMobileTab(mobileTab === 'targets' ? 'map' : 'targets')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors relative ${
+            mobileTab === 'targets' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
+          }`}
+        >
+          <Target className="w-4 h-4" />
+          <span>Targets ({targets.length})</span>
+          {targets.length > 0 && (
+            <span className="absolute top-0.5 right-2 w-2 h-2 rounded-full bg-[#C8963E] animate-pulse" />
+          )}
+        </button>
+
+        <button
+          onClick={runProspectivityTargeting}
+          disabled={isLoading}
+          className="flex items-center gap-1.5 py-1.5 px-3 rounded-xs bg-[#C8963E] text-[#141B26] font-bold text-[11px] disabled:opacity-50 transition-transform active:scale-95 cursor-pointer"
+        >
+          {isLoading ? (
+            <div className="w-3 h-3 rounded-full border-2 border-[#141B26] border-t-transparent animate-spin" />
+          ) : (
+            <Play className="w-3 h-3 fill-current" />
+          )}
+          <span>{isLoading ? 'Targeting...' : 'Target'}</span>
+        </button>
+      </nav>
 
       {/* Target Detail Modal */}
       <TargetDetailModal

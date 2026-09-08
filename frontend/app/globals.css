@@ -63,20 +63,18 @@ body {
   border-radius: 4px !important;
 }
 
-/* The three-panel workbench remains balanced on 14/16-inch MacBook Pro
-   viewports while preserving the map as the primary work surface. */
-@media (max-width: 1280px) {
+/* The three-panel workbench on desktop */
+@media (min-width: 1024px) {
   .geoworkbench-grid {
-    grid-template-columns: 248px minmax(0, 1fr) 248px !important;
+    display: grid !important;
+    grid-template-columns: minmax(248px, 280px) minmax(0, 1fr) minmax(248px, 280px) !important;
   }
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 1023px) {
   .geoworkbench-grid {
-    grid-template-columns: 230px minmax(0, 1fr) !important;
-  }
-  .geoworkbench-grid > :last-child {
-    display: none;
+    display: flex !important;
+    flex-direction: column !important;
   }
 }
 

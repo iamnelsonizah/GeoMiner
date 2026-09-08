@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, Marker, Popup, ScaleControl } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, useMap, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
 import { LayerState } from './LayerControlPanel';
@@ -39,6 +39,40 @@ interface MapComponentProps {
   selectedBasemap: BasemapType;
 }
 
+// ───────────────────────────────── Safe Scale Control ─────────────────────────────────
+function SafeScaleControl() {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+    let scaleControl: L.Control.Scale | null = null;
+    let timer: NodeJS.Timeout | null = null;
+
+    map.whenReady(() => {
+      timer = setTimeout(() => {
+        try {
+          const pane = (map as any)._panes?.mapPane;
+          if (pane && (map as any)._loaded) {
+            scaleControl = L.control.scale({ position: 'bottomleft', imperial: false });
+            scaleControl.addTo(map);
+          }
+        } catch {}
+      }, 150);
+    });
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (scaleControl && map) {
+        try {
+          scaleControl.remove();
+        } catch {}
+      }
+    };
+  }, [map]);
+
+  return null;
+}
+
 // ───────────────────────────────── Controller ─────────────────────────────────
 function MapController({ 
   center, 
@@ -66,7 +100,7 @@ function MapController({
     map.whenReady(() => {
       try {
         const pane = (map as any)._panes?.mapPane;
-        if (pane && typeof (map as any).flyTo === 'function') {
+        if (pane && pane._leaflet_pos && typeof (map as any).flyTo === 'function') {
           map.flyTo(center, zoom, { duration: 1.2 });
         } else {
           map.setView(center, zoom);
@@ -96,6 +130,7 @@ function MapController({
     if (!map || !onBoundsChange) return;
     const handleMove = () => {
       try {
+        if (!(map as any)._loaded) return;
         const b = map.getBounds();
         if (b && typeof b.isValid === 'function' && b.isValid()) {
           onBoundsChange([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
@@ -103,8 +138,9 @@ function MapController({
       } catch {}
     };
     map.on('moveend', handleMove);
-    map.whenReady(handleMove);
+    const initTimer = setTimeout(handleMove, 300);
     return () => {
+      clearTimeout(initTimer);
       map.off('moveend', handleMove);
     };
   }, [map, onBoundsChange]);
@@ -114,7 +150,7 @@ function MapController({
     map.whenReady(() => {
       try {
         const pane = (map as any)._panes?.mapPane;
-        if (pane && typeof (map as any).flyTo === 'function') {
+        if (pane && pane._leaflet_pos && typeof (map as any).flyTo === 'function') {
           map.flyTo([searchLocation.lat, searchLocation.lng], 14, { duration: 1.5 });
         } else {
           map.setView([searchLocation.lat, searchLocation.lng], 14);
@@ -329,8 +365,21 @@ export default function MapComponent({
     });
   };
 
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (wrapperRef.current) {
+        const leafletContainer = wrapperRef.current.querySelector('.leaflet-container');
+        if (leafletContainer) {
+          delete (leafletContainer as any)._leaflet_id;
+        }
+      }
+    };
+  }, []);
+
   return (
-    <div className="w-full h-full relative">
+    <div ref={wrapperRef} className="w-full h-full relative">
       <MapContainer
         center={center}
         zoom={zoom}
@@ -340,7 +389,7 @@ export default function MapComponent({
         <MapController center={center} zoom={zoom} searchLocation={searchLocation} onZoomChange={onZoomChange} onBoundsChange={onBoundsChange} />
         <GeomanDrawControl onAOIDrawn={onAOIDrawn} />
         <AOIBoundary coords={aoiCoords} />
-        <ScaleControl position="bottomleft" imperial={false} />
+        <SafeScaleControl />
 
         {/* Dynamic Basemap Layer (Satellite / Topo / Dark / OSM) */}
         <TileLayer

@@ -2,7 +2,6 @@
 name = "geominer-backend"
 version = "1.2.0"
 description = "Cloud-Based Remote Sensing Prospectivity and Mineral Exploration Targeting Engine"
-readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.100.0",

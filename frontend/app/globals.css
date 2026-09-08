@@ -1,0 +1,100 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+@import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
+
+:root {
+  --navy: #141B26;
+  --panel: #1B2331;
+  --panel-raised: #212B3B;
+  --border: #2E3A4C;
+  --border-strong: #3F4E64;
+  --paper: #E9E4D6;
+  --ink: #B7BFCB;
+  --ink-dim: #7C8798;
+  --gold: #C8963E;
+  --gold-dim: #8A6A32;
+  --rust: #B25A3A;
+  --teal: #4E8C85;
+  --violet: #7C6FA3;
+  --danger: #B0554A;
+}
+
+body {
+  background-color: #0A0D12;
+  color: #B7BFCB;
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Leaflet map base styling */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background-color: #0D1218 !important;
+  font-family: inherit !important;
+}
+
+.leaflet-bar {
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+  border-radius: 4px !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  background-color: var(--panel) !important;
+  color: var(--ink) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: var(--panel-raised) !important;
+  color: var(--gold) !important;
+}
+
+.leaflet-pm-toolbar {
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+}
+
+/* The three-panel workbench remains balanced on 14/16-inch MacBook Pro
+   viewports while preserving the map as the primary work surface. */
+@media (max-width: 1280px) {
+  .geoworkbench-grid {
+    grid-template-columns: 248px minmax(0, 1fr) 248px !important;
+  }
+}
+
+@media (max-width: 1040px) {
+  .geoworkbench-grid {
+    grid-template-columns: 230px minmax(0, 1fr) !important;
+  }
+  .geoworkbench-grid > :last-child {
+    display: none;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--navy);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}

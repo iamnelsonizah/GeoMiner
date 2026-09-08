@@ -1,4 +1,4 @@
-fastapi>=0.100.0
+fastapi[standard]>=0.115.0
 uvicorn>=0.22.0
 earthengine-api>=0.1.350
 google-auth>=2.20.0

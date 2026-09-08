@@ -4,7 +4,7 @@ version = "1.2.0"
 description = "Cloud-Based Remote Sensing Prospectivity and Mineral Exploration Targeting Engine"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi>=0.100.0",
+    "fastapi[standard]>=0.115.0",
     "uvicorn[standard]>=0.22.0",
     "earthengine-api>=0.1.350",
     "google-auth>=2.20.0",

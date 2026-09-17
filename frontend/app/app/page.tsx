@@ -230,15 +230,16 @@ export default function GeoMinerPage() {
   const [isThresholdLocked, setIsThresholdLocked] = useState<boolean>(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [activeBackendUrl, setActiveBackendUrl] = useState<string>(
-    process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8000'
+    process.env.NEXT_PUBLIC_BACKEND_URL || 'https://geominer.fastapicloud.dev'
   );
 
   useEffect(() => {
     let isMounted = true;
     const checkBackend = async () => {
-      // Prioritize configured URL, then IPv4 127.0.0.1:8000, then localhost:8000
+      // Prioritize configured URL, then cloud backend, then localhost
       const candidates = Array.from(new Set([
         (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/+$/, ''),
+        'https://geominer.fastapicloud.dev',
         'http://127.0.0.1:8000',
         'http://localhost:8000',
       ].filter(Boolean))) as string[];

@@ -1,20 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  ChevronRight, 
-  ChevronLeft, 
-  Compass, 
-  MapPin, 
-  Layers, 
-  Sparkles, 
-  Activity, 
-  Download, 
-  GraduationCap, 
-  CheckCircle2,
-  BookOpen
-} from 'lucide-react';
 
 export interface TourGuideModalProps {
   isOpen: boolean;
@@ -25,7 +11,6 @@ export interface TourGuideModalProps {
 interface TourStep {
   title: string;
   badge: string;
-  icon: React.ElementType;
   accentColor: string;
   summary: string;
   keyConcepts: { label: string; explanation: string }[];
@@ -39,7 +24,6 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "Welcome to GeoMiner",
     badge: "System Overview",
-    icon: GraduationCap,
     accentColor: "#C8963E",
     summary: "GeoMiner is a cloud-based remote sensing and mineral prospectivity platform. It leverages Google Earth Engine to process multi-spectral satellite imagery (Sentinel-2 L2A) and digital elevation models (SRTM 30m) using genetic mineral deposit criteria to rank prospective exploration ground.",
     keyConcepts: [
@@ -53,7 +37,6 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "1. Defining Your Area of Interest (AOI)",
     badge: "Step 1: Ground Selection",
-    icon: MapPin,
     accentColor: "#4E8C85",
     summary: "You are not limited to fixed districts. You can investigate prospective mineral belts anywhere on Earth using multiple flexible input methods.",
     keyConcepts: [
@@ -70,7 +53,6 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "2. Deposit Models & AHP Weights",
     badge: "Step 2: Genetic Criteria",
-    icon: Compass,
     accentColor: "#E07A5F",
     summary: "Different mineral systems have distinct geological fingerprints. Selecting the deposit model configures the underlying multi-criteria evidence weights.",
     keyConcepts: [
@@ -86,7 +68,6 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "3. Spectral Alteration Indices",
     badge: "Step 3: Spaceborne Spectroscopy",
-    icon: Layers,
     accentColor: "#9B5DE5",
     summary: "Sentinel-2's 13 spectral bands allow us to compute diagnostic reflectance band ratios that map specific hydrothermal alteration mineral families.",
     keyConcepts: [
@@ -101,7 +82,6 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "4. Structural Lineaments & Terrain",
     badge: "Step 4: Hydrothermal Conduits",
-    icon: Activity,
     accentColor: "#F39C12",
     summary: "Hydrothermal mineral deposits require permeable pathways for fluid migration. GeoMiner extracts regional faults, shear zones, and structural intersections from elevation data.",
     keyConcepts: [
@@ -116,7 +96,6 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "5. Prospectivity Engine & Pit Filter",
     badge: "Step 5: Target Generation",
-    icon: Sparkles,
     accentColor: "#2ECC71",
     summary: "Clicking 'Run Prospectivity Targeting' executes the full multi-criteria synthesis on Google Earth Engine, ranking prospective areas from 0.00 to 1.00.",
     keyConcepts: [
@@ -131,7 +110,6 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "6. Target Review & GIS Export",
     badge: "Step 6: Field Verification",
-    icon: Download,
     accentColor: "#3498DB",
     summary: "Once generated, ranked targets appear as interactive polygons on the map and ranked cards in the left panel, ready for professional GIS and field deployment.",
     keyConcepts: [
@@ -151,23 +129,18 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
   onSelectSampleCaseStudy
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
-  const [dontShowAgain, setDontShowAgain] = useState<boolean>(false);
-
-  useEffect(() => {
+  const [dontShowAgain, setDontShowAgain] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('geominer_tour_dont_show');
-      if (saved === 'true') {
-        setDontShowAgain(true);
-      }
+      return localStorage.getItem('geominer_tour_dont_show') === 'true';
     }
-  }, []);
+    return false;
+  });
 
   if (!isOpen) return null;
 
   const currentStep = TOUR_STEPS[currentStepIndex];
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === TOUR_STEPS.length - 1;
-  const StepIcon = currentStep.icon;
 
   const handleNext = () => {
     if (isLastStep) {
@@ -218,34 +191,26 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#2A364F] bg-[#141B26] shrink-0">
-          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
-            <div 
-              className="p-1.5 sm:p-2 rounded-lg shrink-0"
-              style={{ backgroundColor: `${currentStep.accentColor}20`, color: currentStep.accentColor }}
-            >
-              <StepIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+          <div className="min-w-0">
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/30 uppercase tracking-wider">
+                {currentStep.badge}
+              </span>
+              <span className="text-[10px] sm:text-xs text-[#6B7A90]">
+                Step {currentStepIndex + 1} of {TOUR_STEPS.length}
+              </span>
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/30 uppercase tracking-wider">
-                  {currentStep.badge}
-                </span>
-                <span className="text-[10px] sm:text-xs text-[#6B7A90]">
-                  Step {currentStepIndex + 1} of {TOUR_STEPS.length}
-                </span>
-              </div>
-              <h2 id="tour-title" className="text-base sm:text-lg font-bold text-white mt-0.5 truncate">
-                {currentStep.title}
-              </h2>
-            </div>
+            <h2 id="tour-title" className="text-base sm:text-lg font-bold text-white mt-0.5 truncate">
+              {currentStep.title}
+            </h2>
           </div>
 
           <button
             onClick={handleComplete}
-            className="p-1.5 text-[#6B7A90] hover:text-white rounded-lg hover:bg-[#1E2638] transition-colors shrink-0 ml-2"
+            className="px-2.5 py-1 text-xs text-[#6B7A90] hover:text-white rounded-lg hover:bg-[#1E2638] transition-colors shrink-0 ml-2 font-medium border border-[#2A364F]"
             title="Close Tour"
           >
-            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+            Close
           </button>
         </div>
 
@@ -258,9 +223,8 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
 
           {/* Key Concepts Grid */}
           <div className="space-y-2 pt-2">
-            <h3 className="text-xs uppercase font-bold tracking-wider text-[#6B7A90] flex items-center space-x-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-[#C8963E]" />
-              <span>Core Scientific Principles</span>
+            <h3 className="text-xs uppercase font-bold tracking-wider text-[#6B7A90]">
+              Core Scientific Principles
             </h3>
             <div className="grid grid-cols-1 gap-2.5">
               {currentStep.keyConcepts.map((item, idx) => (
@@ -286,12 +250,9 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
           </div>
 
           {/* Practical Field Tip */}
-          <div className="bg-[#132320] border border-[#1E4D40] p-3 rounded-lg text-xs text-[#52B788] flex items-start space-x-2">
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#4E8C85]" />
-            <div>
-              <span className="font-semibold text-white">Field Tip: </span>
-              {currentStep.practicalTip}
-            </div>
+          <div className="bg-[#132320] border border-[#1E4D40] p-3 rounded-lg text-xs text-[#52B788]">
+            <span className="font-semibold text-white">Field Tip: </span>
+            {currentStep.practicalTip}
           </div>
         </div>
 
@@ -321,29 +282,26 @@ export const TourGuideModal: React.FC<TourGuideModalProps> = ({
             {currentStep.actionText && (
               <button
                 onClick={() => handleActionClick(currentStep.actionDistrict)}
-                className="hidden md:inline-flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/40 hover:bg-[#C8963E]/10 transition-colors font-medium mr-1"
+                className="hidden md:inline-flex items-center text-xs px-3 py-1.5 rounded bg-[#1E2638] text-[#C8963E] border border-[#C8963E]/40 hover:bg-[#C8963E]/10 transition-colors font-medium mr-1"
               >
                 <span>{currentStep.actionText}</span>
-                <ChevronRight className="w-3.5 h-3.5" />
               </button>
             )}
 
             {!isFirstStep && (
               <button
                 onClick={handlePrev}
-                className="inline-flex items-center space-x-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#1E2638] text-white hover:bg-[#28344C] text-xs font-semibold border border-[#2A364F] transition-colors"
+                className="inline-flex items-center px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#1E2638] text-white hover:bg-[#28344C] text-xs font-semibold border border-[#2A364F] transition-colors"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
                 <span>Back</span>
               </button>
             )}
 
             <button
               onClick={handleNext}
-              className="inline-flex items-center space-x-1.5 px-3.5 sm:px-4 py-1.5 rounded-lg bg-[#C8963E] text-[#0A0D14] hover:bg-[#DBA84E] text-xs font-bold transition-all shadow-md active:scale-95"
+              className="inline-flex items-center px-3.5 sm:px-4 py-1.5 rounded-lg bg-[#C8963E] text-[#0A0D14] hover:bg-[#DBA84E] text-xs font-bold transition-all shadow-md active:scale-95"
             >
               <span>{isLastStep ? "Start Exploring" : "Next"}</span>
-              {isLastStep ? <CheckCircle2 className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>

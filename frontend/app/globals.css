@@ -3,6 +3,20 @@
 @import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 
 :root {
+  /* GeoMiner Clean Slate Theme (Matches Exact Screenshot) */
+  --bg-main: #0B0F12;
+  --bg-surface: #10161C;
+  --bg-surface-elevated: #151D25;
+  --border-subtle: #1D262F;
+  --border-strong: #2E3C4D;
+  --text-main: #FFFFFF;
+  --text-muted: #9EABB8;
+  --text-dim: #606F7B;
+  --accent-green: #B7E89F;
+  --accent-green-hover: #C8FFB2;
+  --accent-gold: #C8963E;
+
+  /* Workbench compatibility */
   --navy: #141B26;
   --panel: #1B2331;
   --panel-raised: #212B3B;
@@ -15,25 +29,23 @@
   --gold-dim: #8A6A32;
   --rust: #B25A3A;
   --teal: #4E8C85;
-  --violet: #7C6FA3;
-  --danger: #B0554A;
 }
 
 html, body {
-  height: 100%;
-  height: 100dvh;
-  background-color: #0A0D12;
-  color: #B7BFCB;
-  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100%;
+  background-color: #0B0F12;
+  color: #FFFFFF;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   margin: 0;
   padding: 0;
-  overflow: hidden;
-  overscroll-behavior: none;
+  overflow-x: hidden;
   -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .mono {
-  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 /* Hide scrollbar for horizontal chips on mobile */
@@ -98,14 +110,14 @@ html, body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--navy);
+  background: #0B0F12;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: #1D262F;
   border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+  background: #2E3C4D;
 }

@@ -1,1002 +1,622 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import dynamic from 'next/dynamic';
-import { MapPin, Globe, X, GraduationCap, HelpCircle, SlidersHorizontal, Target, Play } from 'lucide-react';
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { 
+  ArrowRight, 
+  Crosshair, 
+  Layers, 
+  Activity, 
+  ExternalLink,
+  Menu,
+  X,
+  User,
+  LogOut
+} from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
 
-import CommoditySelector, { COMMODITY_MODELS } from '../components/CommoditySelector';
-import LayerControlPanel, { LayerState } from '../components/LayerControlPanel';
-import ProspectivityDashboard, { ExplorationTarget, AreaStatistics } from '../components/ProspectivityDashboard';
-import TargetDetailModal from '../components/TargetDetailModal';
-import TourGuideModal from '../components/TourGuideModal';
-import MapSearchBar from '../components/MapSearchBar';
-import DraggableGeomanToolbar, { GeomanToolMode } from '../components/DraggableGeomanToolbar';
-import BasemapSelector, { BasemapType } from '../components/BasemapSelector';
-import { DraggableContainer } from '../components/DraggableContainer';
-import { SearchLocation } from '../components/MapComponent';
-
-// Dynamically import MapComponent to prevent SSR Leaflet window errors
-const MapComponent = dynamic(() => import('../components/MapComponent'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex flex-col items-center justify-center bg-[#0D1218] text-[#7C8798]">
-      <div className="w-6 h-6 rounded-full border border-[#2E3A4C] border-t-[#C8963E] animate-spin" />
-      <span className="text-[11px] mono mt-2 text-[#7C8798]">Initializing Leaflet Map Engine...</span>
-    </div>
-  )
-});
-
-// Benchmark exploration test sites & quick-jump bookmarks
-const PROVINCE_BOOKMARKS = [
-  {
-    name: 'Karaganda Cu-Zn',
-    region: 'Kazakhstan',
-    commodity: 'vms_base_metals',
-    center: [49.8029, 73.1021] as [number, number],
-    zoom: 13,
-  },
-  {
-    name: 'Escondida Cu-Au',
-    region: 'Chile',
-    commodity: 'porphyry_cu_au',
-    center: [-24.27, -69.07] as [number, number],
-    zoom: 12,
-  },
-  {
-    name: 'Pilbara LCT Pegmatite',
-    region: 'Australia',
-    commodity: 'lithium_pegmatite',
-    center: [-21.03, 119.74] as [number, number],
-    zoom: 13,
-  },
-  {
-    name: 'Witwatersrand Au',
-    region: 'South Africa',
-    commodity: 'epithermal_au',
-    center: [-26.20, 28.04] as [number, number],
-    zoom: 12,
-  },
-  {
-    name: 'Iberian Pyrite Belt',
-    region: 'Spain',
-    commodity: 'vms_base_metals',
-    center: [37.75, -6.95] as [number, number],
-    zoom: 12,
-  }
-];
-
-// Spherical polygon area calculation in hectares
-const calculateAOIArea = (polygonCoords: number[][]) => {
-  if (!polygonCoords || polygonCoords.length < 3) return 0;
-  let totalArea = 0;
-  const first = polygonCoords[0];
-  const latRadian = (first[1] * Math.PI) / 180;
-  const metersPerDegLat = 111320;
-  const metersPerDegLng = 111320 * Math.cos(latRadian);
-
-  for (let i = 0; i < polygonCoords.length - 1; i++) {
-    const p1 = polygonCoords[i];
-    const p2 = polygonCoords[i + 1];
-    const x1 = p1[0] * metersPerDegLng;
-    const y1 = p1[1] * metersPerDegLat;
-    const x2 = p2[0] * metersPerDegLng;
-    const y2 = p2[1] * metersPerDegLat;
-    totalArea += (x1 * y2) - (x2 * y1);
-  }
-
-  const p1 = polygonCoords[polygonCoords.length - 1];
-  const p2 = polygonCoords[0];
-  const x1 = p1[0] * metersPerDegLng;
-  const y1 = p1[1] * metersPerDegLat;
-  const x2 = p2[0] * metersPerDegLng;
-  const y2 = p2[1] * metersPerDegLat;
-  totalArea += (x1 * y2) - (x2 * y1);
-
-  const areaSqMeters = Math.abs(totalArea) / 2;
-  return areaSqMeters / 10000;
-};
-
-export default function GeoMinerPage() {
-  const [selectedCommodity, setSelectedCommodity] = useState<string>('porphyry_cu_au');
-  const [locationLabel, setLocationLabel] = useState<string>('Escondida Cu-Au, Chile');
-  const [mapBounds, setMapBounds] = useState<[number, number, number, number] | null>(null);
-  const [selectedBasemap, setSelectedBasemap] = useState<BasemapType>('satellite');
-  const [confidenceThreshold, setConfidenceThreshold] = useState<number>(65);
-  
-  const [aoiCoords, setAoiCoords] = useState<number[][]>([]);
-  const [mapCenter, setMapCenter] = useState<[number, number]>([-24.27, -69.07]);
-  const [mapZoom, setMapZoom] = useState<number>(12);
-  const [activeTool, setActiveTool] = useState<GeomanToolMode>('rectangle');
-  const [searchLocation, setSearchLocation] = useState<SearchLocation | null>(null);
-
-  const [maskVegetation, setMaskVegetation] = useState<boolean>(true);
-  const [showScaleAlert, setShowScaleAlert] = useState<boolean>(true);
-
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [statusMessage, setStatusMessage] = useState<string>('No follow-up areas ranked yet. Scores are relative to this AOI and require geological verification.');
-  const [error, setError] = useState<string | null>(null);
-
-  // Targets & Statistics State
-  const [targets, setTargets] = useState<ExplorationTarget[]>([]);
-  const [targetGeoJSON, setTargetGeoJSON] = useState<any | null>(null);
-  const [areaStats, setAreaStats] = useState<AreaStatistics | null>(null);
-  const [inspectedTarget, setInspectedTarget] = useState<ExplorationTarget | null>(null);
-  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
-
-  // Tile URLs returned by backend
-  const [tileUrls, setTileUrls] = useState<Record<string, string>>({});
-
-  // Active Layers State
-  const [layers, setLayers] = useState<Record<string, LayerState>>({
-    prospectivity_heatmap: {
-      id: 'prospectivity_heatmap',
-      name: 'Prospectivity heatmap',
-      category: 'prospectivity',
-      visible: true,
-      opacity: 0.85,
-      colorSwatch: '#C8963E'
-    },
-    target_polygons: {
-      id: 'target_polygons',
-      name: 'Ranked follow-up areas',
-      category: 'prospectivity',
-      visible: true,
-      opacity: 1.0,
-      colorSwatch: '#E9E4D6'
-    },
-    hydroxyl_clay: {
-      id: 'hydroxyl_clay',
-      name: 'Hydroxyl / clay (Al-OH)',
-      category: 'spectral',
-      visible: false,
-      opacity: 0.7,
-      colorSwatch: '#7C6FA3'
-    },
-    ferric_iron: {
-      id: 'ferric_iron',
-      name: 'Ferric iron / gossan (Fe³⁺)',
-      category: 'spectral',
-      visible: false,
-      opacity: 0.7,
-      colorSwatch: '#B25A3A'
-    },
-    gossan_index: {
-      id: 'gossan_index',
-      name: 'Gossan diagnostic ratio',
-      category: 'spectral',
-      visible: false,
-      opacity: 0.7,
-      colorSwatch: '#B25A3A'
-    },
-    lineament_density: {
-      id: 'lineament_density',
-      name: 'Terrain-edge density (structural proxy)',
-      category: 'structural',
-      visible: false,
-      opacity: 0.75,
-      colorSwatch: '#4E8C85'
-    },
-    fault_intersections: {
-      id: 'fault_intersections',
-      name: 'Directional-edge crossings (proxy)',
-      category: 'structural',
-      visible: false,
-      opacity: 0.8,
-      colorSwatch: '#3D8B7A'
-    },
-    alteration_shells: {
-      id: 'alteration_shells',
-      name: 'Hydrothermal alteration shells',
-      category: 'spectral',
-      visible: false,
-      opacity: 0.75,
-      colorSwatch: '#C8963E'
-    },
-    mine_disturbance: {
-      id: 'mine_disturbance',
-      name: 'Active pit / mine operations',
-      category: 'spectral',
-      visible: false,
-      opacity: 0.65,
-      colorSwatch: '#E74C3C'
-    }
-  });
-
-  const [excludedTargets, setExcludedTargets] = useState<ExplorationTarget[]>([]);
-  const [isThresholdLocked, setIsThresholdLocked] = useState<boolean>(false);
-  const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
-  const [activeBackendUrl, setActiveBackendUrl] = useState<string>(
-    process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8000'
-  );
-
-  useEffect(() => {
-    let isMounted = true;
-    const checkBackend = async () => {
-      // Prioritize configured URL, then IPv4 127.0.0.1:8000, then localhost:8000
-      const candidates = Array.from(new Set([
-        (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/+$/, ''),
-        'http://127.0.0.1:8000',
-        'http://localhost:8000',
-      ].filter(Boolean))) as string[];
-
-      let connected = false;
-      for (const rawUrl of candidates) {
-        const url = rawUrl.replace(/\/+$/, '');
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3500);
-          const resp = await fetch(`${url}/health`, { signal: controller.signal });
-          clearTimeout(timeoutId);
-          if (resp.ok) {
-            if (isMounted) {
-              setActiveBackendUrl(url);
-              setBackendStatus('online');
-            }
-            connected = true;
-            break;
-          }
-        } catch {
-          // Try next candidate
-        }
-      }
-
-      if (!connected && isMounted) {
-        setBackendStatus('offline');
-      }
-    };
-
-    checkBackend();
-    const timer = setInterval(checkBackend, 15000);
-    return () => {
-      isMounted = false;
-      clearInterval(timer);
-    };
-  }, []);
-
-  const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
-  const [mobileTab, setMobileTab] = useState<'map' | 'layers' | 'targets'>('map');
-
-  const switchMobileTab = useCallback((tab: 'map' | 'layers' | 'targets') => {
-    setMobileTab(tab);
-    if (tab === 'map') {
-      setTimeout(() => {
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('map-invalidate-size'));
-        }
-      }, 120);
-    }
-  }, []);
-
-  // Auto-launch tour for first-time visitors unless disabled
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const dontShow = localStorage.getItem('geominer_tour_dont_show');
-      const completed = localStorage.getItem('geominer_tour_completed');
-      if (dontShow !== 'true' && completed !== 'true') {
-        const timer = setTimeout(() => {
-          setIsTourOpen(true);
-        }, 1200);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, []);
-
-  const handleSelectBookmark = (bm: typeof PROVINCE_BOOKMARKS[0]) => {
-    setMapCenter(bm.center);
-    setMapZoom(bm.zoom);
-    setLocationLabel(`${bm.name}, ${bm.region}`);
-    setSelectedCommodity(bm.commodity);
-    const profile = COMMODITY_MODELS[bm.commodity];
-    if (profile && !isThresholdLocked) {
-      setConfidenceThreshold(profile.target_threshold);
-    }
-    setAoiCoords([]);
-    setTargets([]);
-    setExcludedTargets([]);
-    setTargetGeoJSON(null);
-    setAreaStats(null);
-    setSelectedTargetId(null);
-    setTileUrls({});
-    setError(null);
-    setStatusMessage(`Navigated to ${bm.name} (${bm.region}). Ready to run ${COMMODITY_MODELS[bm.commodity]?.name || 'targeting'}.`);
-  };
-
-  const handleSelectCaseStudy = (districtKey: string) => {
-    const bookmark = PROVINCE_BOOKMARKS.find(b => 
-      b.name.toLowerCase().includes(districtKey.toLowerCase()) || 
-      b.commodity.toLowerCase().includes(districtKey.toLowerCase())
-    ) || PROVINCE_BOOKMARKS[1]; // default to Escondida
-    handleSelectBookmark(bookmark);
-  };
-
-  const aoiAreaHa = useMemo(() => calculateAOIArea(aoiCoords), [aoiCoords]);
-
-  const handleSelectCommodity = (key: string) => {
-    setSelectedCommodity(key);
-    const profile = COMMODITY_MODELS[key];
-    if (profile && !isThresholdLocked) {
-      setConfidenceThreshold(profile.target_threshold);
-    }
-  };
-
-  const handleToggleVerification = (targetId: string) => {
-    setTargets(prev => prev.map(t => {
-      if (t.target_id === targetId) {
-        const current = t.verification_status || 'Remote-Sensing Only';
-        const next = current === 'Remote-Sensing Only' 
-          ? 'Field-Verified' 
-          : (current === 'Field-Verified' ? 'Assay-Confirmed' : 'Remote-Sensing Only');
-        return { ...t, verification_status: next };
-      }
-      return t;
-    }));
-  };
-
-  // Handler to toggle layers
-  const handleToggleLayer = (id: string) => {
-    setLayers(prev => ({
-      ...prev,
-      [id]: { ...prev[id], visible: !prev[id].visible }
-    }));
-  };
-
-  // Main targeting execution trigger
-  const runProspectivityTargeting = async () => {
-    setIsLoading(true);
-    setError(null);
-    setStatusMessage(`Computing multi-criteria remote sensing evidence for ${locationLabel}...`);
-
-    try {
-      const thresholdVal = Number.isFinite(confidenceThreshold)
-        ? Math.max(0.40, Math.min(0.85, confidenceThreshold / 100.0))
-        : 0.65;
-
-      const payload: any = {
-        commodity: selectedCommodity,
-        start_date: '2023-01-01',
-        end_date: '2024-01-01',
-        mask_vegetation: maskVegetation,
-        custom_threshold: thresholdVal,
-        // Fixed solar geometry is not defensible for a seasonal composite.
-        apply_solar_correction: false
-      };
-
-      if (aoiCoords && aoiCoords.length >= 3) {
-        payload.aoi = aoiCoords;
-        payload.geometry = {
-          type: 'Polygon',
-          coordinates: [aoiCoords]
-        };
-      } else if (mapBounds && mapBounds.length === 4) {
-        let [west, south, east, north] = mapBounds;
-        const width = Math.abs(east - west);
-        const height = Math.abs(north - south);
-        // Optimize bounding box to reasonable exploration concession size (max ~40km)
-        if (width > 0.35 || height > 0.35) {
-          const midLng = (west + east) / 2;
-          const midLat = (south + north) / 2;
-          west = midLng - 0.10;
-          east = midLng + 0.10;
-          south = midLat - 0.08;
-          north = midLat + 0.08;
-        }
-        payload.bbox = [west, south, east, north];
-      } else {
-        const [lat, lng] = mapCenter;
-        payload.bbox = [lng - 0.10, lat - 0.08, lng + 0.10, lat + 0.08];
-      }
-
-      // 1. Run Prospectivity Target Generation
-      const resp = await fetch(`${activeBackendUrl}/api/prospectivity`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({ detail: 'Targeting pipeline failed' }));
-        const errorMessage = typeof errData.detail === 'string'
-          ? errData.detail
-          : (Array.isArray(errData.detail)
-              ? errData.detail.map((e: any) => `${e.loc?.filter((x: string) => x !== 'body').join('.') || 'parameter'}: ${e.msg}`).join(', ')
-              : (errData.detail ? JSON.stringify(errData.detail) : 'Targeting pipeline failed'));
-        throw new Error(errorMessage);
-      }
-
-      const data = await resp.json();
-
-      setTargets(data.targets || []);
-      setExcludedTargets(data.excluded_targets || []);
-      setTargetGeoJSON(data.target_geojson || null);
-      setAreaStats(data.area_statistics || null);
-
-      if (data.heatmap_tile_url) {
-        setTileUrls(prev => ({ 
-          ...prev, 
-          prospectivity_heatmap: data.heatmap_tile_url,
-          mine_disturbance: data.mine_disturbance_tile_url || prev.mine_disturbance
-        }));
-      }
-
-      // 2. Fetch Supporting Layers asynchronously
-      fetch(`${activeBackendUrl}/api/spectral-indices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(r => r.ok ? r.json() : null).then(specData => {
-        if (specData?.layers) {
-          setTileUrls(prev => ({ ...prev, ...specData.layers }));
-        }
-      }).catch(console.error);
-
-      fetch(`${activeBackendUrl}/api/structural-layers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(r => r.ok ? r.json() : null).then(structData => {
-        if (structData?.layers) {
-          setTileUrls(prev => ({ ...prev, ...structData.layers }));
-        }
-      }).catch(console.error);
-
-      const excCount = data.excluded_targets?.length || 0;
-      setStatusMessage(`Ranked ${data.targets?.length || 0} follow-up areas across ${data.area_statistics?.total_aoi_km2 || 0} km² (${excCount} possible mine-disturbance anomalies excluded). Scores are not probabilities or drill recommendations.`);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'An error occurred during targeting.');
-      setStatusMessage('Target generation encountered an error.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Export GeoJSON file
-  const handleExportGeoJSON = () => {
-    if (!targetGeoJSON) return;
-    const blob = new Blob([JSON.stringify(targetGeoJSON, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `GeoMiner_Targets_${selectedCommodity}_${new Date().toISOString().slice(0, 10)}.geojson`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Export CSV file
-  const handleExportCSV = () => {
-    if (targets.length === 0) return;
-    const headers = [
-      "Target ID", "Rank", "Priority", "Ranking score (0-100)", "Area (ha)", "Area (km2)", 
-      "Elevation (m)", "Latitude", "Longitude", "Alteration Shell", "Structural Setting", 
-      "Verification Status", "Deposit Model Audit", "Recommended Action"
-    ];
-    const rows = targets.map(t => [
-      t.target_id,
-      t.rank,
-      t.priority,
-      t.confidence_score,
-      t.area_ha,
-      t.area_km2,
-      t.elevation_m || 2200,
-      t.centroid[0],
-      t.centroid[1],
-      `"${t.alteration_shell || t.primary_alteration}"`,
-      `"${t.structural_setting || 'Lineament Corridor'}"`,
-      `"${t.verification_status || 'Remote-Sensing Only'}"`,
-      `"${t.deposit_model_audit || COMMODITY_MODELS[selectedCommodity]?.name || selectedCommodity}"`,
-      `"${t.recommended_action}"`
-    ]);
-
-    const csvContent = headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `GeoMiner_Drill_Targets_${selectedCommodity}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Export AutoCAD R12 3D DXF for Leapfrog Geo & CAD software
-  const handleExportDXF = () => {
-    if (!targetGeoJSON || targets.length === 0) return;
-
-    let dxf = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n";
-
-    const features = targetGeoJSON.features || [];
-    features.forEach((feat: any) => {
-      const coords = feat.geometry?.coordinates?.[0] || [];
-      const props = feat.properties || {};
-      const z = props.elevation_m || 2200.0;
-      const targetId = props.target_id || "TARGET";
-      const vStatus = props.verification_status || "RS";
-
-      // 3D Polyline outline
-      if (coords.length > 0) {
-        dxf += `0\nPOLYLINE\n8\n${targetId}\n66\n1\n70\n1\n`;
-        coords.forEach((pt: number[]) => {
-          dxf += `0\nVERTEX\n8\n${targetId}\n10\n${pt[0]}\n20\n${pt[1]}\n30\n${z}\n`;
-        });
-        dxf += "0\nSEQEND\n";
-      }
-
-      // 3D Collar Point
-      if (props.centroid) {
-        dxf += `0\nPOINT\n8\n${targetId}_COLLAR\n10\n${props.centroid[1]}\n20\n${props.centroid[0]}\n30\n${z}\n`;
-        dxf += `0\nTEXT\n8\n${targetId}_LABELS\n10\n${props.centroid[1]}\n20\n${props.centroid[0]}\n30\n${z}\n40\n0.0005\n1\n${targetId} (${props.confidence_score}%) [${vStatus}]\n`;
-      }
-    });
-
-    dxf += "0\nENDSEC\n0\nEOF\n";
-
-    const blob = new Blob([dxf], { type: 'application/dxf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `GeoMiner_3D_Targets_${selectedCommodity}_${new Date().toISOString().slice(0, 10)}.dxf`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Export Leapfrog Geo Drill Hole Collar Planning CSV
-  const handleExportLeapfrog = () => {
-    if (targets.length === 0) return;
-    const headers = [
-      "Hole_ID",
-      "Planned_Longitude",
-      "Planned_Latitude",
-      "Planned_Elevation_m",
-      "Priority",
-      "Ranking_score_0_100",
-      "Footprint_ha",
-      "Alteration_Shell",
-      "Structural_Setting",
-      "Verification_Status",
-      "Deposit_Model",
-      "Recommended_Action"
-    ];
-    const rows = targets.map((t) => [
-      `DH_${t.target_id.replace('-', '_')}`,
-      t.centroid[1].toFixed(6),
-      t.centroid[0].toFixed(6),
-      (t.elevation_m || 2200.0).toFixed(1),
-      t.priority,
-      t.confidence_score,
-      t.area_ha,
-      `"${t.alteration_shell || t.primary_alteration}"`,
-      `"${t.structural_setting || 'Lineament Corridor'}"`,
-      `"${t.verification_status || 'Remote-Sensing Only'}"`,
-      `"${t.deposit_model_audit || COMMODITY_MODELS[selectedCommodity]?.name || selectedCommodity}"`,
-    ]);
-
-    const csvContent = headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `GeoMiner_Leapfrog_Collars_${selectedCommodity}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+export default function GeoMinerLandingPage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, isAuthenticated, logout } = useAuth();
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full max-w-full overflow-hidden bg-[#141B26] text-[#B7BFCB]">
+    <div className="min-h-screen bg-[#0B0F12] text-white selection:bg-[#B7E89F] selection:text-[#0B0F12] font-sans relative overflow-x-hidden antialiased">
       
-      {/* Top Bar */}
-      <header className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3 border-b border-[#2E3A4C] shrink-0 bg-[#141B26] z-[2000]">
-        <div className="flex items-center min-w-0">
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <svg className="w-6 h-6 sm:w-7 sm:h-7 shrink-0" viewBox="0 0 28 28" fill="none">
-              <circle cx="14" cy="14" r="10.5" stroke="#8A6A32" strokeWidth="1.3" />
-              <circle cx="14" cy="14" r="6.5" stroke="#C8963E" strokeWidth="1.3" />
-              <circle cx="14" cy="14" r="1.6" fill="#C8963E" />
-            </svg>
-            <div>
-              <div className="text-[13px] sm:text-[14px] font-semibold text-[#E9E4D6] tracking-[0.2px] leading-tight">
+      {/* ────────────────────────────────── Top Navigation Bar ────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0B0F12]/95 backdrop-blur-md border-b border-[#1D262F]">
+        <div className="max-w-[1240px] mx-auto px-6 h-16 flex items-center justify-between gap-4">
+          
+          {/* Brand Wordmark */}
+          <div className="flex items-center gap-3 shrink-0">
+            <Link href="/" className="flex items-center gap-2.5 group">
+              <svg className="w-5 h-5 text-[#B7E89F]" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L1 21h22L12 2zm0 3.8l7.5 13H4.5L12 5.8z"/>
+              </svg>
+              <span className="text-[17px] font-semibold tracking-[-0.01em] text-white">
                 GeoMiner
-              </div>
-              <div className="hidden md:block text-[10.5px] text-[#7C8798] mt-0.5 leading-none">
-                Remote sensing &amp; prospectivity targeting
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 ml-2 sm:ml-3 shrink-0">
-            <div className="hidden xs:block text-[9.5px] sm:text-[10px] text-[#C8963E] border border-[#8A6A32] px-1.5 sm:px-2 py-0.5 tracking-[0.3px]">
-              SUITE
-            </div>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 border border-[#2E3A4C] bg-[#141B26] text-[10px] rounded-xs" title="Google Earth Engine Backend API status">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                backendStatus === 'online' ? 'bg-[#4E8C85] animate-pulse' : backendStatus === 'checking' ? 'bg-[#C8963E]' : 'bg-[#E74C3C]'
-              }`} />
-              <span className={backendStatus === 'online' ? 'text-[#AAB4C2]' : backendStatus === 'checking' ? 'text-[#C8963E]' : 'text-[#E74C3C]'}>
-                {backendStatus === 'online' ? 'Online' : backendStatus === 'checking' ? 'Connecting...' : 'Offline'}
               </span>
-            </div>
-            <button
-              onClick={() => setIsTourOpen(true)}
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 text-[10.5px] sm:text-[11px] font-semibold text-[#C8963E] bg-[#1E2638] hover:bg-[#28344C] hover:text-[#DBA84E] border border-[#C8963E]/40 rounded-xs transition-colors cursor-pointer shrink-0"
-              title="Open Guided Tour and Educational Field Guide"
+            </Link>
+            <span className="hidden sm:inline-block text-[#2E3C4D]">|</span>
+            <span className="hidden sm:inline-block font-mono text-[10.5px] text-[#9EABB8] tracking-[0.14em] uppercase">
+              EARTH OBSERVATION
+            </span>
+          </div>
+
+          {/* Navigation Links — Clean Title Case */}
+          <nav className="hidden md:flex items-center gap-7 text-[13.5px] font-medium text-[#C2CCD6]" aria-label="Main Navigation">
+            <a href="#platform" className="hover:text-white transition-colors">Platform</a>
+            <a href="#workflow" className="hover:text-white transition-colors">Workflow</a>
+            <a href="#models" className="hover:text-white transition-colors">Deposit models</a>
+            <a href="#tools" className="hover:text-white transition-colors">Tools</a>
+            <a href="#deliverables" className="hover:text-white transition-colors">Exports &amp; API</a>
+          </nav>
+
+          {/* Right Actions: Log in / User Profile & Launch Workspace */}
+          <div className="flex items-center gap-4 shrink-0">
+            {isAuthenticated && user ? (
+              <div className="flex items-center gap-3">
+                <span className="hidden lg:inline-block text-xs font-mono text-[#9EABB8] bg-[#10161C] border border-[#1E2735] px-2.5 py-1 rounded">
+                  {user.fullName || user.email}
+                </span>
+                <Link 
+                  href="/app" 
+                  className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[13.5px] px-4 py-2 rounded-lg inline-flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <span>Open Workspace</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={logout}
+                  title="Sign out"
+                  className="text-[#9EABB8] hover:text-white p-2 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link 
+                  href="/login" 
+                  className="text-[13.5px] font-medium text-[#C2CCD6] hover:text-white transition-colors"
+                >
+                  Log in
+                </Link>
+                <Link 
+                  href="/app" 
+                  className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[13.5px] px-4 py-2 rounded-lg inline-flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <span>Launch Workspace</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </>
+            )}
+
+            {/* Mobile Menu trigger */}
+            <button 
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden flex items-center p-1.5 text-[#9EABB8] hover:text-white"
+              aria-label="Toggle Menu"
             >
-              <GraduationCap className="w-3.5 h-3.5 text-[#C8963E]" />
-              <span className="hidden sm:inline">Field Guide</span>
-              <span className="sm:hidden">Guide</span>
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
 
-        {/* Dynamic Global Location & Coordinates Readout */}
-        <div className="hidden lg:flex items-center gap-2.5 bg-[#141B26] border border-[#2E3A4C] px-3 py-1.5 rounded-sm">
-          <MapPin className="w-3.5 h-3.5 text-[#C8963E] shrink-0" />
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] font-medium text-[#E9E4D6] max-w-[280px] truncate" title={locationLabel}>
-              {locationLabel}
-            </span>
-            <span className="text-[10.5px] text-[#7C8798] mono">
-              {mapCenter[0].toFixed(3)}°, {mapCenter[1].toFixed(3)}°
-            </span>
-          </div>
-        </div>
-
-        {/* Right Top Actions */}
-        <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
-          <button
-            onClick={() => setMaskVegetation(!maskVegetation)}
-            className="hidden md:flex items-center gap-2 text-[11.5px] text-[#7C8798] hover:text-[#E9E4D6] transition-colors cursor-pointer"
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                maskVegetation ? 'bg-[#4E8C85]' : 'bg-[#7C8798] opacity-50'
-              }`}
-            />
-            <span>Vegetation mask {maskVegetation ? 'on' : 'off'}</span>
-          </button>
-
-          <button
-            onClick={runProspectivityTargeting}
-            disabled={isLoading}
-            className={`hidden sm:flex bg-[#C8963E] text-[#1B140A] border-none px-3.5 py-1.5 sm:px-4 sm:py-2 text-[12px] sm:text-[12.5px] font-semibold tracking-[0.2px] items-center gap-2 transition-opacity cursor-pointer shadow-sm ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#d8a548]'
-            }`}
-          >
-            {isLoading ? (
-              <div className="w-3 h-3 rounded-full border-2 border-[#1B140A] border-t-transparent animate-spin" />
+        {/* Mobile Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-[#1D262F] bg-[#0B0F12] px-6 py-4 space-y-3 text-[14px]">
+            <a href="#platform" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#C2CCD6] hover:text-white">Platform</a>
+            <a href="#workflow" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#C2CCD6] hover:text-white">Workflow</a>
+            <a href="#models" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#C2CCD6] hover:text-white">Deposit models</a>
+            <a href="#tools" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#C2CCD6] hover:text-white">Tools</a>
+            <a href="#deliverables" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#C2CCD6] hover:text-white">Exports &amp; API</a>
+            {isAuthenticated ? (
+              <div className="pt-2 border-t border-[#1D262F] flex items-center justify-between">
+                <Link href="/app" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#B7E89F] font-semibold">Open Workspace →</Link>
+                <button onClick={() => { logout(); setMobileMenuOpen(false); }} className="text-xs text-[#EF4444]">Sign out</button>
+              </div>
             ) : (
-              <span className="w-0 h-0 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent border-left-[6px] border-l-[#1B140A]" />
+              <div className="pt-2 border-t border-[#1D262F] space-y-2">
+                <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#C2CCD6] hover:text-white">Log in</Link>
+                <Link href="/signup" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-[#B7E89F] font-semibold">Register Account →</Link>
+              </div>
             )}
-            <span>{isLoading ? 'Targeting...' : 'Generate targets'}</span>
-          </button>
-        </div>
+          </div>
+        )}
       </header>
 
-      {/* Main Workbench Layout */}
-      <div className="flex-1 flex lg:grid lg:grid-cols-[minmax(248px,280px)_minmax(0,1fr)_minmax(248px,280px)] overflow-hidden relative geoworkbench-grid">
-        
-        {/* Left Rail: Deposit Model & Layers (Desktop: sidebar, Mobile: slide-over drawer) */}
-        <div className={`
-          ${mobileTab === 'layers' 
-            ? 'fixed inset-x-0 top-0 bottom-[56px] z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto overscroll-contain' 
-            : 'hidden lg:block'}
-          lg:static lg:z-auto border-r border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26] space-y-4
-        `}>
-          {mobileTab === 'layers' && (
-            <div className="flex lg:hidden items-center justify-between pb-3 border-b border-[#2E3A4C] mb-2 shrink-0">
-              <span className="text-sm font-bold text-[#E9E4D6] flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4 text-[#C8963E]" />
-                Deposit Models &amp; Layers
+      <main>
+
+        {/* ────────────────────────────────── Hero Section: Side-by-Side ────────────────────────────────── */}
+        <section className="relative pt-28 pb-20 lg:pt-36 lg:pb-28 border-b border-[#1D262F] overflow-hidden bg-[#0B0F12]">
+          <div className="max-w-[1240px] mx-auto px-6">
+            
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+              
+              {/* Left Column: Headline, Copy & CTAs */}
+              <div className="lg:col-span-5 space-y-5">
+                
+                <div className="text-[#B7E89F] font-mono text-[10.5px] tracking-[0.16em] font-semibold uppercase">
+                  SATELLITE ANALYTICS FOR MINERAL EXPLORATION
+                </div>
+
+                <h1 className="text-4xl sm:text-5xl lg:text-[54px] font-normal leading-[1.08] tracking-[-0.03em] text-white">
+                  Mineral exploration,<br />
+                  without the GIS<br />
+                  overhead.
+                </h1>
+
+                <p className="text-[16px] sm:text-[17px] leading-[1.65] text-[#9EABB8] max-w-lg">
+                  GeoMiner turns Earth observation data into mineral prospectivity targets and alteration maps you can actually use. Define a concession, select your deposit model, generate ranked targets. No complex setup, no GIS software.
+                </p>
+
+                {/* CTAs */}
+                <div className="flex flex-wrap items-center gap-4 pt-2">
+                  <Link 
+                    href="/app" 
+                    className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[14px] px-5 py-2.5 rounded-lg inline-flex items-center gap-2 transition-all shadow-sm"
+                  >
+                    <span>Start targeting free</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                  <a 
+                    href="#workflow" 
+                    className="text-[14px] font-medium text-white hover:text-[#B7E89F] px-4 py-2.5 transition-colors"
+                  >
+                    See how it works
+                  </a>
+                </div>
+
+              </div>
+
+              {/* Right Column: Authentic Live GeoMiner Screenshot */}
+              <div className="lg:col-span-7">
+                <div className="rounded-xl overflow-hidden border border-[#1D262F] shadow-2xl bg-[#10161C]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img 
+                    src="/geominer-hero-mockup.png" 
+                    alt="GeoMiner Workstation — Mineral Exploration & Remote Sensing Analysis" 
+                    className="w-full h-auto object-cover block"
+                  />
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        {/* ────────────────────────────────── Section: How It Works ────────────────────────────────── */}
+        <section id="workflow" className="py-24 bg-[#0B0F12]">
+          <div className="max-w-[1240px] mx-auto px-6">
+            
+            {/* Section Tag */}
+            <div className="text-[#B7E89F] font-mono text-[11px] font-semibold tracking-[0.22em] uppercase mb-12">
+              H O W &nbsp; I T &nbsp; W O R K S
+            </div>
+
+            {/* 4-Step Sequence */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+              
+              {/* Step 01 */}
+              <div className="space-y-2.5">
+                <div className="font-mono text-sm font-medium text-[#B7E89F]">01</div>
+                <h3 className="text-lg font-semibold text-white tracking-[-0.01em]">
+                  Define study area
+                </h3>
+                <p className="text-[14px] text-[#9EABB8] leading-relaxed">
+                  Draw or upload your boundary. Delineate regional exploration blocks up to 2,500 km².
+                </p>
+              </div>
+
+              {/* Step 02 */}
+              <div className="space-y-2.5">
+                <div className="font-mono text-sm font-medium text-[#B7E89F]">02</div>
+                <h3 className="text-lg font-semibold text-white tracking-[-0.01em]">
+                  Choose deposit model
+                </h3>
+                <p className="text-[14px] text-[#9EABB8] leading-relaxed">
+                  Select Porphyry Cu-Au, Epithermal Au, Lithium (LCT), Iron Gossan, or VMS Base Metals presets.
+                </p>
+              </div>
+
+              {/* Step 03 */}
+              <div className="space-y-2.5">
+                <div className="font-mono text-sm font-medium text-[#B7E89F]">03</div>
+                <h3 className="text-lg font-semibold text-white tracking-[-0.01em]">
+                  Run targeting
+                </h3>
+                <p className="text-[14px] text-[#9EABB8] leading-relaxed">
+                  Our spectral and structural models process your data on Google Earth Engine in seconds. No coding.
+                </p>
+              </div>
+
+              {/* Step 04 */}
+              <div className="space-y-2.5">
+                <div className="font-mono text-sm font-medium text-[#B7E89F]">04</div>
+                <h3 className="text-lg font-semibold text-white tracking-[-0.01em]">
+                  Get ranked targets
+                </h3>
+                <p className="text-[14px] text-[#9EABB8] leading-relaxed">
+                  View your prospectivity map, inspect ranked polygons (Tier 1–3), and export to Leapfrog Geo.
+                </p>
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        {/* ────────────────────────────────── Section: Built For Real-World Exploration ────────────────────────────────── */}
+        <section id="models" className="py-24 bg-[#0B0F12] border-t border-[#1D262F]">
+          <div className="max-w-[1240px] mx-auto px-6">
+            
+            <div className="space-y-3 mb-12">
+              <span className="text-[#B7E89F] font-mono text-[11px] font-semibold tracking-wider uppercase">
+                BUILT FOR REAL-WORLD EXPLORATION
               </span>
-              <button
-                onClick={() => switchMobileTab('map')}
-                className="p-1.5 rounded-xs bg-[#1E2638] text-[#AAB4C2] hover:text-white border border-[#2E3A4C]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-          <CommoditySelector
-            selectedCommodity={selectedCommodity}
-            onSelectCommodity={handleSelectCommodity}
-            confidenceThreshold={confidenceThreshold}
-            onConfidenceChange={setConfidenceThreshold}
-            isThresholdLocked={isThresholdLocked}
-            onToggleThresholdLock={setIsThresholdLocked}
-            disabled={isLoading}
-          />
-
-          <LayerControlPanel
-            layers={layers}
-            onToggleLayer={handleToggleLayer}
-          />
-
-          {mobileTab === 'layers' && (
-            <button
-              onClick={() => switchMobileTab('map')}
-              className="w-full lg:hidden mt-4 py-2.5 bg-[#C8963E] text-[#141B26] font-bold rounded-xs text-xs shrink-0"
-            >
-              Apply &amp; Return to Map
-            </button>
-          )}
-        </div>
-
-        {/* Center: Map Area */}
-        <div className="flex flex-col h-full overflow-hidden bg-[#0D1218] relative">
-          
-          {/* Top Search Bar & Basemap Switcher */}
-          <div className="px-3 py-2 border-b border-[#2E3A4C] bg-[#141B26] z-[1500] relative flex flex-col gap-1.5 shrink-0">
-            <div className="flex items-center gap-2 w-full">
-              <div className="flex-1 min-w-0">
-                <MapSearchBar
-                  onLocationSelect={(loc) => {
-                    setSearchLocation(loc);
-                    setMapCenter([loc.lat, loc.lng]);
-                    setMapZoom(13);
-                    setLocationLabel(loc.label);
-                    setAoiCoords([]);
-                    setTargets([]);
-                    setExcludedTargets([]);
-                    setTargetGeoJSON(null);
-                    setAreaStats(null);
-                    setSelectedTargetId(null);
-                    setTileUrls({});
-                    setError(null);
-                    setStatusMessage(`Navigated to ${loc.label}. Ready to generate targets.`);
-                  }}
-                />
-              </div>
-
-              <div className="shrink-0">
-                <BasemapSelector
-                  selectedBasemap={selectedBasemap}
-                  onSelectBasemap={setSelectedBasemap}
-                />
-              </div>
+              <h2 className="text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-[-0.025em] text-white">
+                From regional screening to drill targets
+              </h2>
+              <p className="text-[16px] text-[#9EABB8] max-w-2xl leading-relaxed">
+                Whether screening Andean copper belts, Western Australian lithium pegmatites, or VMS shear corridors, GeoMiner delivers verifiable remote-sensing proof.
+              </p>
             </div>
 
-            {/* Quick-Jump Exploration Province Bookmarks */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 -mx-1 px-1">
-              <span className="text-[10px] text-[#7C8798] uppercase tracking-wider font-semibold mr-0.5 shrink-0">Jump:</span>
-              {PROVINCE_BOOKMARKS.map((bm) => (
-                <button
-                  key={bm.name}
-                  onClick={() => handleSelectBookmark(bm)}
-                  className="px-2 py-1 bg-[#1B2331] hover:bg-[#222E40] text-[10.5px] text-[#AAB4C2] hover:text-[#E9E4D6] border border-[#2E3A4C] hover:border-[#C8963E]/60 transition-colors rounded-xs whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0"
-                  title={`Fly to ${bm.name} (${bm.region})`}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+              
+              {/* Left Column: Workstation View Card */}
+              <div className="lg:col-span-7 bg-[#10161C] border border-[#1E2735] rounded-xl p-6 sm:p-7 flex flex-col justify-between space-y-5">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono text-[11px] font-semibold text-[#B7E89F] tracking-wider uppercase">
+                      WORKSTATION VIEW
+                    </span>
+                    <Link 
+                      href="/app" 
+                      className="text-xs text-[#B7E89F] hover:underline inline-flex items-center gap-1 transition-colors"
+                    >
+                      <span>Open Live Engine</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </div>
+                  <h3 className="text-xl font-semibold text-white">
+                    Unified Remote Sensing Command Center
+                  </h3>
+                </div>
+
+                <div className="rounded-lg overflow-hidden border border-[#1E2735] bg-[#0B0F12]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img 
+                    src="/geominer-hero-mockup.png" 
+                    alt="GeoMiner Command Center View" 
+                    className="w-full h-auto object-cover block"
+                  />
+                </div>
+
+                <p className="text-[13.5px] text-[#9EABB8] leading-relaxed">
+                  Interactive multi-temporal AOI delineation over Escondida Cu-Au with 12 layered spectral products, deposit-model AHP consensus, and instant target footprint telemetry.
+                </p>
+              </div>
+
+              {/* Right Column: 3 Stacked Capability Cards */}
+              <div className="lg:col-span-5 flex flex-col justify-between gap-4">
+                
+                {/* Card 1: Spectral Alteration Engine */}
+                <div className="bg-[#10161C] border border-[#1E2735] rounded-xl p-5 space-y-2 hover:border-[#B7E89F]/50 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded-sm bg-[#B7E89F] inline-block shrink-0"></span>
+                    <span className="font-mono text-[11px] font-semibold text-[#B7E89F] tracking-wide uppercase">
+                      SPECTRAL ALTERATION ENGINE
+                    </span>
+                  </div>
+                  <h4 className="text-[17px] font-semibold text-white">
+                    Hydroxyl (Al-OH) &amp; Gossan Diagnostics
+                  </h4>
+                  <p className="text-[13.5px] text-[#9EABB8] leading-relaxed">
+                    Diagnostic SWIR1/SWIR2 (B11/B12) and Red/Green (B4/B3) ratios mapping phyllic sericite halos, advanced argillic alteration, and supergene iron oxide gossans.
+                  </p>
+                  <div className="pt-2 border-t border-[#1E2735] font-mono text-[11px] flex justify-between text-[#9EABB8]">
+                    <span>Sensors: Sentinel-2 (VNIR/SWIR)</span>
+                    <span className="text-[#B7E89F] font-medium">Active</span>
+                  </div>
+                </div>
+
+                {/* Card 2: Structural Geophysics */}
+                <div className="bg-[#10161C] border border-[#1E2735] rounded-xl p-5 space-y-2 hover:border-[#B7E89F]/50 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded-sm bg-[#B7E89F] inline-block shrink-0"></span>
+                    <span className="font-mono text-[11px] font-semibold text-[#B7E89F] tracking-wide uppercase">
+                      STRUCTURAL GEOPHYSICS
+                    </span>
+                  </div>
+                  <h4 className="text-[17px] font-semibold text-white">
+                    Multidirectional Hillshade &amp; Lineaments
+                  </h4>
+                  <p className="text-[13.5px] text-[#9EABB8] leading-relaxed">
+                    Blends 0°, 45°, 90°, and 135° illumination azimuths with Sobel spatial filters to reveal shear fault corridors, structural dilatation zones, and fracture intersections.
+                  </p>
+                  <div className="pt-2 border-t border-[#1E2735] font-mono text-[11px] flex justify-between text-[#9EABB8]">
+                    <span>Resolution: Copernicus 30m DEM</span>
+                    <span className="text-[#B7E89F] font-medium">Active</span>
+                  </div>
+                </div>
+
+                {/* Card 3: AHP Targeting Consensus */}
+                <div className="bg-[#10161C] border border-[#1E2735] rounded-xl p-5 space-y-2 hover:border-[#B7E89F]/50 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded-sm bg-[#B7E89F] inline-block shrink-0"></span>
+                    <span className="font-mono text-[11px] font-semibold text-[#B7E89F] tracking-wide uppercase">
+                      AHP TARGETING CONSENSUS
+                    </span>
+                  </div>
+                  <h4 className="text-[17px] font-semibold text-white">
+                    Multi-Criteria Target Ranking Engine
+                  </h4>
+                  <p className="text-[13.5px] text-[#9EABB8] leading-relaxed">
+                    Analytic Hierarchy Process (AHP) synthesizing alteration, structure, gossan, and terrain into auditable 0–100 ranking scores with automated bare-rock NDVI screening.
+                  </p>
+                  <div className="pt-2 border-t border-[#1E2735] font-mono text-[11px] flex justify-between text-[#9EABB8]">
+                    <span>Output: Ranked Vector Polygons</span>
+                    <span className="text-[#B7E89F] font-medium">Ready</span>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        {/* ────────────────────────────────── Section: Layer Registry ────────────────────────────────── */}
+        <section id="platform" className="py-24 bg-[#0B0F12] border-t border-[#1D262F]">
+          <div className="max-w-[1240px] mx-auto px-6">
+            
+            <div className="space-y-3 mb-12">
+              <span className="text-[#B7E89F] font-mono text-[11px] font-semibold tracking-wider uppercase">
+                LAYER REGISTRY
+              </span>
+              <h2 className="text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-[-0.025em] text-white">
+                Authentic exploration layers ready on click
+              </h2>
+              <p className="text-[16px] text-[#9EABB8] max-w-2xl leading-relaxed">
+                Explore the exact earth observation layers computed on Google Earth Engine supercomputing clusters inside GeoMiner.
+              </p>
+            </div>
+
+            {/* 12 Exploration Layer Cards in 6 Columns */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
+              {[
+                { name: 'Hydroxyl (Al-OH)', img: '/layer-thumbnails/false_color.png', spec: 'Sentinel-2 (B11/B12)' },
+                { name: 'Ferric Iron (Fe³⁺)', img: '/layer-thumbnails/burn_ratio.png', spec: 'Sentinel-2 (B4/B3)' },
+                { name: 'Ferrous Iron (Fe²⁺)', img: '/layer-thumbnails/vegetation.png', spec: 'B11/B8 + B3/B4' },
+                { name: 'Gossan Diagnostic', img: '/layer-thumbnails/built_up.png', spec: 'Sentinel-2 (B11/B4)' },
+                { name: 'Alteration RGB', img: '/layer-thumbnails/land_cover.png', spec: 'Synthesis False Color' },
+                { name: 'Mine Disturbance', img: '/layer-thumbnails/water.png', spec: 'Sentinel-2 / SAR Mask' },
+                { name: 'SAR Radar C-Band', img: '/layer-thumbnails/sar_radar.png', spec: 'Sentinel-1 GRD Roughness' },
+                { name: 'Digital Elevation', img: '/layer-thumbnails/digital_elevation.png', spec: 'Copernicus 30m DEM' },
+                { name: 'Slope Gradient', img: '/layer-thumbnails/slope_stability.png', spec: 'Geotechnical Degrees' },
+                { name: 'Terrain Hillshade', img: '/layer-thumbnails/terrain_hillshade.png', spec: '4-Azimuth Topo Fusion' },
+                { name: 'Lineament Density', img: '/layer-thumbnails/header_icon.png', spec: 'Sobel Fracture Corridors' },
+                { name: 'True Color RGB', img: '/layer-thumbnails/true_color.png', spec: 'Sentinel-2 MSI (10m)' },
+              ].map((layer, idx) => (
+                <div 
+                  key={idx}
+                  className="bg-[#10161C] border border-[#1E2735] rounded-xl p-3 hover:border-[#B7E89F]/60 transition-colors flex flex-col justify-between group"
                 >
-                  <span>{bm.name}</span>
-                </button>
+                  <div className="aspect-video w-full rounded-lg overflow-hidden mb-2.5 bg-[#0C1014] border border-[#1D262F]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img 
+                      src={layer.img} 
+                      alt={layer.name} 
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-[13.5px] font-medium text-white tracking-[-0.01em]">
+                      {layer.name}
+                    </div>
+                    <div className="text-[11.5px] text-[#9EABB8] mt-0.5 font-normal">
+                      {layer.spec}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
+
           </div>
+        </section>
 
-          {/* Map Canvas */}
-          <div className="flex-1 relative w-full h-full overflow-hidden">
-            {/* Floating Resolution & Scale Alert (Centered, Non-overlapping, Dismissible) */}
-            {mapZoom >= 15 && showScaleAlert && (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-[#1B2331]/95 border border-[#3F4E64] shadow-2xl px-3.5 py-1.5 rounded-sm flex items-center gap-2.5 text-[11px] text-[#C8D1DE] z-[1200] max-w-xl pointer-events-auto backdrop-blur">
-                <span className="text-[#C8963E] text-xs shrink-0">🔍</span>
-                <span className="leading-tight">
-                  <strong className="text-[#E9E4D6]">Native Resolution Scale (20m):</strong> Target boundaries reflect raster pixel geometry, not surveyed lease extents (±0.2 ha uncertainty).
-                </span>
-                <button
-                  onClick={() => setShowScaleAlert(false)}
-                  className="text-[#7C8798] hover:text-[#E9E4D6] ml-1.5 p-0.5 cursor-pointer shrink-0 transition-colors"
-                  title="Dismiss scale alert"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
-            {/* Floating Draggable Geoman GIS Tool Palette */}
-            <DraggableContainer
-              defaultPosition={{ x: 16, y: 16 }}
-              zIndex={1000}
-              className="pointer-events-auto"
-            >
-              <DraggableGeomanToolbar
-                activeTool={activeTool}
-                onToolSelect={setActiveTool}
-                onClearAOI={() => {
-                  setAoiCoords([]);
-                  setTargets([]);
-                  setExcludedTargets([]);
-                  setTargetGeoJSON(null);
-                  setAreaStats(null);
-                  setSelectedTargetId(null);
-                  setTileUrls({});
-                  setStatusMessage('AOI cleared.');
-                }}
-                onBoundaryUpload={(coords) => {
-                  setAoiCoords(coords);
-                  setTargets([]);
-                  setExcludedTargets([]);
-                  setTargetGeoJSON(null);
-                  setAreaStats(null);
-                  setSelectedTargetId(null);
-                  setTileUrls({});
-                  setStatusMessage(`Uploaded boundary with ${coords.length} vertices.`);
-                }}
-                aoiAreaHa={aoiAreaHa}
-                authoritativeAreaKm2={areaStats?.total_aoi_km2}
-              />
-            </DraggableContainer>
-            <MapComponent
-              activeLayers={layers}
-              tileUrls={tileUrls}
-              targetGeoJSON={targetGeoJSON}
-              selectedTargetId={selectedTargetId}
-              aoiCoords={aoiCoords}
-              onAOIDrawn={(coords) => {
-                setAoiCoords(coords);
-                setTargets([]);
-                setExcludedTargets([]);
-                setTargetGeoJSON(null);
-                setAreaStats(null);
-                setSelectedTargetId(null);
-                setTileUrls({});
-                setActiveTool('pan');
-                setStatusMessage(`AOI established with ${coords.length} vertices. Click "Generate targets".`);
-              }}
-              onTargetClick={(targetId) => {
-                setSelectedTargetId(targetId);
-                const tgt = targets.find(t => t.target_id === targetId) || excludedTargets.find(t => t.target_id === targetId);
-                if (tgt) setInspectedTarget(tgt);
-              }}
-              center={mapCenter}
-              zoom={mapZoom}
-              onZoomChange={(z) => {
-                setMapZoom(z);
-                if (z < 15) setShowScaleAlert(true);
-              }}
-              onBoundsChange={setMapBounds}
-              searchLocation={searchLocation}
-              selectedBasemap={selectedBasemap}
-            />
-
-            {/* Floating Error Toast Notification */}
-            {error && (
-              <div className="absolute bottom-6 right-6 z-[2000] max-w-md bg-[#2B1717]/95 border border-[#E74C3C]/80 shadow-2xl p-3.5 rounded-sm flex items-start gap-3 text-[12px] text-[#F5D5D5] animate-in slide-in-from-bottom-3 duration-200 backdrop-blur pointer-events-auto">
-                <span className="text-[#E74C3C] text-[15px] shrink-0 mt-0.5">⚠️</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-[#FF8F8F] text-[12px] mb-0.5">Targeting Notice</div>
-                  <div className="leading-snug text-[#E9E4D6] text-[11.5px] break-words">{error}</div>
-                </div>
-                <button
-                  onClick={() => setError(null)}
-                  className="text-[#A87D7D] hover:text-[#FFFFFF] cursor-pointer p-0.5 shrink-0 transition-colors"
-                  title="Dismiss notice"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom Status Bar (Desktop only, mobile has dock) */}
-          <div className="hidden lg:flex border-t border-[#2E3A4C] px-5 py-2.5 text-[12px] text-[#7C8798] items-center gap-2 shrink-0 bg-[#141B26] z-[500]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#7C8798] shrink-0" />
-            <span className="truncate">{error || statusMessage}</span>
-          </div>
-
-        </div>
-
-        {/* Right Rail: Results & Zonation (Desktop: sidebar, Mobile: slide-over drawer) */}
-        <div className={`
-          ${mobileTab === 'targets' 
-            ? 'fixed inset-x-0 top-0 bottom-[56px] z-[2500] flex flex-col bg-[#141B26] p-4 overflow-y-auto overscroll-contain' 
-            : 'hidden lg:block'}
-          lg:static lg:z-auto border-l border-[#2E3A4C] overflow-y-auto p-4 bg-[#141B26]
-        `}>
-          {mobileTab === 'targets' && (
-            <div className="flex lg:hidden items-center justify-between pb-3 border-b border-[#2E3A4C] mb-3 shrink-0">
-              <span className="text-sm font-bold text-[#E9E4D6] flex items-center gap-2">
-                <Target className="w-4 h-4 text-[#C8963E]" />
-                Exploration Targets ({targets.length})
+        {/* ────────────────────────────────── Section: Diagnostic Tools ────────────────────────────────── */}
+        <section id="tools" className="py-24 bg-[#0B0F12] border-t border-[#1D262F]">
+          <div className="max-w-[1240px] mx-auto px-6">
+            
+            <div className="space-y-3 mb-12">
+              <span className="text-[#B7E89F] font-mono text-[11px] font-semibold tracking-wider uppercase">
+                DIAGNOSTIC TOOLS
               </span>
-              <button
-                onClick={() => switchMobileTab('map')}
-                className="p-1.5 rounded-xs bg-[#1E2638] text-[#AAB4C2] hover:text-white border border-[#2E3A4C]"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <h2 className="text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-[-0.025em] text-white">
+                Inspect pixels, curves, and time series
+              </h2>
+              <p className="text-[16px] text-[#9EABB8] max-w-2xl leading-relaxed">
+                GeoMiner is engineered for exploration geologists who need to verify ground truth with physics-based diagnostics before publishing conclusions or planning drilling.
+              </p>
             </div>
-          )}
-          <ProspectivityDashboard
-            areaStats={areaStats}
-            targets={targets}
-            excludedTargets={excludedTargets}
-            selectedTargetId={selectedTargetId}
-            onSelectTarget={(tgt) => {
-              setSelectedTargetId(tgt.target_id);
-              setInspectedTarget(tgt);
-            }}
-            onToggleVerification={handleToggleVerification}
-            onExportGeoJSON={handleExportGeoJSON}
-            onExportCSV={handleExportCSV}
-            onExportDXF={handleExportDXF}
-            onExportLeapfrog={handleExportLeapfrog}
-            aoiAreaHa={aoiAreaHa}
-            isLoading={isLoading}
-          />
-          {mobileTab === 'targets' && (
-            <button
-              onClick={() => switchMobileTab('map')}
-              className="w-full lg:hidden mt-4 py-2.5 bg-[#C8963E] text-[#141B26] font-bold rounded-xs text-xs shrink-0"
-            >
-              Back to Map View
-            </button>
-          )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+              
+              {/* Left Column: 3 Diagnostic Cards */}
+              <div className="lg:col-span-6 space-y-4">
+                
+                {/* 10-Band */}
+                <div className="bg-[#10161C] border border-[#1E2735] rounded-xl p-5 space-y-1.5 hover:border-[#B7E89F]/50 transition-colors">
+                  <div className="font-mono text-[11px] font-semibold text-[#B7E89F] tracking-wide">
+                    10-BAND
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">
+                    Full Spectral Signature Graph
+                  </h3>
+                  <p className="text-[13.5px] text-[#9EABB8] leading-relaxed">
+                    Click any pixel on Earth to graph its exact 10-band surface reflectance profile from coastal blue to SWIR-2. Differentiate phyllic sericite from unaltered host rock.
+                  </p>
+                </div>
+
+                {/* 5-Year */}
+                <div className="bg-[#10161C] border border-[#1E2735] rounded-xl p-5 space-y-1.5 hover:border-[#B7E89F]/50 transition-colors">
+                  <div className="font-mono text-[11px] font-semibold text-[#B7E89F] tracking-wide">
+                    5-YEAR
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">
+                    Pixel Trajectory &amp; LandTrendr
+                  </h3>
+                  <p className="text-[13.5px] text-[#9EABB8] leading-relaxed">
+                    Segment multi-year Sentinel-2 medians from 2018 to 2025 to separate permanent open-pit mine excavations from seasonal vegetation phenology.
+                  </p>
+                </div>
+
+                {/* Swipe */}
+                <div className="bg-[#10161C] border border-[#1E2735] rounded-xl p-5 space-y-1.5 hover:border-[#B7E89F]/50 transition-colors">
+                  <div className="font-mono text-[11px] font-semibold text-[#B7E89F] tracking-wide">
+                    SWIPE
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">
+                    Split-Screen Comparison Curtain
+                  </h3>
+                  <p className="text-[13.5px] text-[#9EABB8] leading-relaxed">
+                    Drag an interactive vertical curtain to immediately detect spatial relationships between optical satellite feeds and hydrothermal alteration masks.
+                  </p>
+                </div>
+
+              </div>
+
+              {/* Right Column: Export Suite Card */}
+              <div className="lg:col-span-6 bg-[#10161C] border border-[#1E2735] rounded-xl p-8 flex flex-col justify-between space-y-6" id="deliverables">
+                
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between font-mono text-[11px] text-[#9EABB8]">
+                    <span className="text-[#B7E89F] font-semibold uppercase tracking-wide">EXPORT SUITE</span>
+                    <span>FIELD &amp; GIS READY</span>
+                  </div>
+                  <h3 className="text-2xl font-semibold text-white">
+                    Every result exports in publication formats
+                  </h3>
+                  <p className="text-[14.5px] text-[#9EABB8] leading-relaxed">
+                    Take classified alteration layers and ranked vector targets directly into QGIS, ArcGIS, Google Earth, or Leapfrog Geo.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[13px]">
+                  <div className="bg-[#0B0F12] border border-[#1E2735] p-3 rounded-lg flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-[#B7E89F]"></span>
+                    <span className="text-white text-[12.5px]">GeoTIFF (32-bit Float)</span>
+                  </div>
+                  <div className="bg-[#0B0F12] border border-[#1E2735] p-3 rounded-lg flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-[#B7E89F]"></span>
+                    <span className="text-white text-[12.5px]">GeoJSON Vector Targets</span>
+                  </div>
+                  <div className="bg-[#0B0F12] border border-[#1E2735] p-3 rounded-lg flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-[#B7E89F]"></span>
+                    <span className="text-white text-[12.5px]">CSV Summary &amp; Leapfrog</span>
+                  </div>
+                  <div className="bg-[#0B0F12] border border-[#1E2735] p-3 rounded-lg flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-[#B7E89F]"></span>
+                    <span className="text-white text-[12.5px]">3D DXF (CAD) Targets</span>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        {/* ────────────────────────────────── Section: Terminal Launch CTA ────────────────────────────────── */}
+        <section className="py-24 bg-[#0B0F12] border-t border-[#1D262F] text-center">
+          <div className="max-w-2xl mx-auto px-6 space-y-6">
+            
+            <h2 className="text-3xl sm:text-4xl lg:text-[44px] font-normal text-white tracking-[-0.025em]">
+              Start your first targeting survey.
+            </h2>
+
+            <p className="text-[16px] text-[#9EABB8] max-w-xl mx-auto leading-relaxed">
+              Launch the workspace, pick any concession on Earth, and receive instant mineral prospectivity intelligence and ranked exploration targets.
+            </p>
+
+            <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+              <Link 
+                href="/app" 
+                className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[14px] px-5 py-2.5 rounded-lg inline-flex items-center gap-2 transition-all shadow-sm"
+              >
+                <span>Launch Workspace Now</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+              {isAuthenticated ? (
+                <button 
+                  onClick={logout}
+                  className="bg-[#182028] hover:bg-[#202B36] text-white border border-[#2E3C4D] font-medium text-[14px] px-5 py-2.5 rounded-lg transition-all cursor-pointer"
+                >
+                  <span>Sign out</span>
+                </button>
+              ) : (
+                <Link 
+                  href="/login" 
+                  className="bg-[#182028] hover:bg-[#202B36] text-white border border-[#2E3C4D] font-medium text-[14px] px-5 py-2.5 rounded-lg transition-all"
+                >
+                  <span>Sign in</span>
+                </Link>
+              )}
+            </div>
+
+          </div>
+        </section>
+
+      </main>
+
+      {/* ────────────────────────────────── Footer ────────────────────────────────── */}
+      <footer className="border-t border-[#1D262F] bg-[#0B0F12] py-12">
+        <div className="max-w-[1240px] mx-auto px-6">
+          
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-[13px] text-[#9EABB8]">
+            
+            {/* Brand */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#B7E89F]" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2L1 21h22L12 2zm0 3.8l7.5 13H4.5L12 5.8z"/>
+                </svg>
+                <span className="font-semibold text-white">GeoMiner</span>
+              </div>
+              <span className="text-[#2E3C4D]">·</span>
+              <span>© 2026 GeoMiner Geospatial Systems.</span>
+            </div>
+
+            {/* Links */}
+            <div className="flex items-center gap-6">
+              <a href="#platform" className="hover:text-white transition-colors">Platform</a>
+              <a href="#workflow" className="hover:text-white transition-colors">Workflow</a>
+              <a href="#models" className="hover:text-white transition-colors">Deposit models</a>
+              <a href="#tools" className="hover:text-white transition-colors">Tools</a>
+              <a href="#deliverables" className="hover:text-white transition-colors">Exports &amp; API</a>
+              {isAuthenticated ? (
+                <button onClick={logout} className="hover:text-white transition-colors cursor-pointer">Sign out</button>
+              ) : (
+                <Link href="/login" className="hover:text-white transition-colors">Log in</Link>
+              )}
+            </div>
+
+            {/* Sensor baseline */}
+            <div className="text-[12px] text-[#606F7B] font-mono hidden lg:block">
+              Sentinel-2 MSI (VNIR/SWIR) · Sentinel-1 SAR · Copernicus 30m DEM
+            </div>
+
+          </div>
+
         </div>
-
-      </div>
-
-      {/* Mobile Bottom Navigation Dock (visible on mobile / tablet < 1024px) */}
-      <nav className="lg:hidden flex items-center justify-around px-2 py-1.5 border-t border-[#2E3A4C] bg-[#141B26] shrink-0 z-[3000] shadow-lg pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <button
-          onClick={() => switchMobileTab(mobileTab === 'layers' ? 'map' : 'layers')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
-            mobileTab === 'layers' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
-          }`}
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          <span>Models</span>
-        </button>
-
-        <button
-          onClick={() => switchMobileTab('map')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors ${
-            mobileTab === 'map' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
-          }`}
-        >
-          <Globe className="w-4 h-4" />
-          <span>Map</span>
-        </button>
-
-        <button
-          onClick={() => switchMobileTab(mobileTab === 'targets' ? 'map' : 'targets')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xs text-[10.5px] font-medium transition-colors relative ${
-            mobileTab === 'targets' ? 'text-[#C8963E] bg-[#1E2638]' : 'text-[#7C8798] hover:text-[#E9E4D6]'
-          }`}
-        >
-          <Target className="w-4 h-4" />
-          <span>Targets ({targets.length})</span>
-          {targets.length > 0 && (
-            <span className="absolute top-0.5 right-2 w-2 h-2 rounded-full bg-[#C8963E] animate-pulse" />
-          )}
-        </button>
-
-        <button
-          onClick={() => {
-            switchMobileTab('map');
-            runProspectivityTargeting();
-          }}
-          disabled={isLoading}
-          className="flex items-center gap-1.5 py-1.5 px-3.5 rounded-xs bg-[#C8963E] text-[#141B26] font-bold text-[11px] disabled:opacity-50 transition-transform active:scale-95 cursor-pointer shadow-md"
-        >
-          {isLoading ? (
-            <div className="w-3 h-3 rounded-full border-2 border-[#141B26] border-t-transparent animate-spin" />
-          ) : (
-            <Play className="w-3 h-3 fill-current" />
-          )}
-          <span>{isLoading ? 'Targeting...' : 'Target'}</span>
-        </button>
-      </nav>
-
-      {/* Target Detail Modal */}
-      <TargetDetailModal
-        target={inspectedTarget}
-        onClose={() => setInspectedTarget(null)}
-        onZoomTo={(centroid) => {
-          setMapCenter(centroid);
-          setMapZoom(14);
-        }}
-      />
-
-      {/* Interactive Exploration Tour Guide & Field Guide */}
-      <TourGuideModal
-        isOpen={isTourOpen}
-        onClose={() => setIsTourOpen(false)}
-        onSelectSampleCaseStudy={handleSelectCaseStudy}
-      />
+      </footer>
 
     </div>
   );

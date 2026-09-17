@@ -83,7 +83,7 @@ export default function GeoMinerLandingPage() {
                   Log in
                 </Link>
                 <Link 
-                  href="/app" 
+                  href="/signup" 
                   className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[13.5px] px-4 py-2 rounded-lg inline-flex items-center gap-1.5 transition-all shadow-sm"
                 >
                   <span>Launch Workspace</span>
@@ -155,10 +155,10 @@ export default function GeoMinerLandingPage() {
                 {/* CTAs */}
                 <div className="flex flex-wrap items-center gap-4 pt-2">
                   <Link 
-                    href="/app" 
+                    href={isAuthenticated ? "/app" : "/signup"} 
                     className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[14px] px-5 py-2.5 rounded-lg inline-flex items-center gap-2 transition-all shadow-sm"
                   >
-                    <span>Start targeting free</span>
+                    <span>{isAuthenticated ? "Open Workspace" : "Start targeting free"}</span>
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                   <a 
@@ -275,7 +275,7 @@ export default function GeoMinerLandingPage() {
                       WORKSTATION VIEW
                     </span>
                     <Link 
-                      href="/app" 
+                      href={isAuthenticated ? "/app" : "/signup"} 
                       className="text-xs text-[#B7E89F] hover:underline inline-flex items-center gap-1 transition-colors"
                     >
                       <span>Open Live Engine</span>
@@ -548,10 +548,10 @@ export default function GeoMinerLandingPage() {
 
             <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
               <Link 
-                href="/app" 
+                href={isAuthenticated ? "/app" : "/signup"} 
                 className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[14px] px-5 py-2.5 rounded-lg inline-flex items-center gap-2 transition-all shadow-sm"
               >
-                <span>Launch Workspace Now</span>
+                <span>{isAuthenticated ? "Launch Workspace Now" : "Start For Free"}</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
               {isAuthenticated ? (

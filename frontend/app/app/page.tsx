@@ -3,7 +3,20 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { MapPin, Globe, X, HelpCircle, SlidersHorizontal, Target, Play, ArrowLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { 
+  MapPin, 
+  Globe, 
+  X, 
+  HelpCircle, 
+  SlidersHorizontal, 
+  Target, 
+  Play, 
+  ArrowLeft,
+  LogOut,
+  User as UserIcon
+} from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
 
 import CommoditySelector, { COMMODITY_MODELS } from '../../components/CommoditySelector';
 import LayerControlPanel, { LayerState } from '../../components/LayerControlPanel';
@@ -98,6 +111,16 @@ const calculateAOIArea = (polygonCoords: number[][]) => {
 };
 
 export default function GeoMinerPage() {
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
+
+  // Route protection: redirect unauthenticated users to login
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace('/login?redirect=/app');
+    }
+  }, [authLoading, isAuthenticated, router]);
+
   const [selectedCommodity, setSelectedCommodity] = useState<string>('porphyry_cu_au');
   const [locationLabel, setLocationLabel] = useState<string>('Escondida Cu-Au, Chile');
   const [mapBounds, setMapBounds] = useState<[number, number, number, number] | null>(null);
@@ -580,6 +603,21 @@ export default function GeoMinerPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Route protection guard screen while verifying auth or redirecting
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="fixed inset-0 h-screen w-screen bg-[#0B0F12] flex flex-col items-center justify-center text-white z-[9999]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#1E2735] border-t-[#B7E89F] animate-spin mb-4" />
+        <div className="font-mono text-xs uppercase tracking-[0.16em] text-[#B7E89F]">
+          Verifying Exploration Credentials...
+        </div>
+        <div className="text-[12.5px] text-[#9EABB8] mt-1 font-sans">
+          Protected Workspace · Redirecting to Sign In
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 flex flex-col h-[100dvh] w-full max-w-full overflow-hidden bg-[#141B26] text-[#B7BFCB]">
       
@@ -624,6 +662,21 @@ export default function GeoMinerPage() {
               <span className="hidden sm:inline">Field Guide</span>
               <span className="sm:hidden">Guide</span>
             </button>
+            {user && (
+              <div className="hidden sm:flex items-center gap-2 border-l border-[#2E3A4C] pl-2.5 ml-1 shrink-0">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#1E2638] border border-[#2E3A4C] rounded-xs text-[10.5px] font-mono text-[#E9E4D6]">
+                  <UserIcon className="w-3 h-3 text-[#B7E89F]" />
+                  <span className="max-w-[120px] truncate">{user.fullName || user.email}</span>
+                </div>
+                <button
+                  onClick={logout}
+                  title="Sign out of GeoMiner"
+                  className="p-1 text-[#7C8798] hover:text-[#EF4444] transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

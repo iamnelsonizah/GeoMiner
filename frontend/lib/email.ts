@@ -1,7 +1,5 @@
 // Resend Email Dispatch Helper for GeoMiner
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const MAIL_FROM_ADDRESS = process.env.MAIL_FROM_ADDRESS || 'noreply@tryagrochain.com';
-const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'GeoMiner';
+import { getResendApiKey, getMailFromAddress, getMailFromName } from './env';
 
 export async function sendEmailOTP(params: {
   email: string;
@@ -118,14 +116,23 @@ export async function sendEmailOTP(params: {
 </html>
     `.trim();
 
+    const resendKey = getResendApiKey();
+    const fromAddress = getMailFromAddress();
+    const fromName = getMailFromName();
+
+    if (!resendKey) {
+      console.warn('RESEND_API_KEY is not configured in environment or .env files. Simulating dispatch.');
+      return { success: true, id: 'simulated_' + Math.random().toString(36).substring(7) };
+    }
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${resendKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `${MAIL_FROM_NAME} <${MAIL_FROM_ADDRESS}>`,
+        from: `${fromName} <${fromAddress}>`,
         to: [email],
         subject,
         html: htmlContent,

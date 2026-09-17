@@ -1,19 +1,30 @@
 import { Pool, QueryResult, QueryResultRow } from 'pg';
+import { getDatabaseConnectionString } from './env';
 
-const rawConnectionString =
-  process.env.DATABASE_URL ||
-  (process.env.DB_HOST && process.env.DB_PASSWORD
-    ? `postgres://${process.env.DB_USERNAME || 'postgres'}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT || '5432'}/${process.env.DB_DATABASE || 'postgres'}?sslmode=require`
-    : '');
+const globalForDb = global as unknown as { 
+  dbPool?: Pool; 
+  dbInitialized?: boolean;
+  dbConnStr?: string;
+};
 
-// Strip any ?sslmode parameter so pg's ssl config overrides properly
-const connectionString = rawConnectionString.replace(/[?&]sslmode=[^&]+/g, '');
+export function getPool(): Pool {
+  const connectionString = getDatabaseConnectionString();
+  
+  if (!connectionString) {
+    throw new Error('Database connection string could not be resolved. Please verify DATABASE_URL or DB_HOST in .env.local or backend/.env.');
+  }
 
-const globalForDb = global as unknown as { dbPool?: Pool; dbInitialized?: boolean };
+  if (globalForDb.dbPool && globalForDb.dbConnStr === connectionString) {
+    return globalForDb.dbPool;
+  }
 
-export const pool =
-  globalForDb.dbPool ||
-  new Pool({
+  if (globalForDb.dbPool) {
+    try {
+      globalForDb.dbPool.end().catch(() => {});
+    } catch {}
+  }
+
+  const newPool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
     max: 10,
@@ -21,16 +32,25 @@ export const pool =
     connectionTimeoutMillis: 10000,
   });
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForDb.dbPool = pool;
+  globalForDb.dbPool = newPool;
+  globalForDb.dbConnStr = connectionString;
+  return newPool;
 }
+
+// Proxy export for backward compatibility
+export const pool = {
+  connect: () => getPool().connect(),
+  query: (text: string, params?: any[]) => getPool().query(text, params),
+  end: () => getPool().end(),
+};
 
 // Auto-migrate tables on first query if they don't exist
 async function ensureTables() {
   if (globalForDb.dbInitialized) return;
   
   try {
-    const client = await pool.connect();
+    const activePool = getPool();
+    const client = await activePool.connect();
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS users (
@@ -66,7 +86,8 @@ async function ensureTables() {
       client.release();
     }
   } catch (err) {
-    console.error('Database migration check note:', err);
+    console.error('Database initialization note:', err);
+    throw err;
   }
 }
 
@@ -75,7 +96,8 @@ export async function query<T extends QueryResultRow = any>(
   params?: any[]
 ): Promise<QueryResult<T>> {
   await ensureTables();
-  const client = await pool.connect();
+  const activePool = getPool();
+  const client = await activePool.connect();
   try {
     return await client.query<T>(text, params);
   } finally {

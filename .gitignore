@@ -25,6 +25,7 @@ frontend/.next/
 .next/
 frontend/out/
 out/
+frontend/frontend/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

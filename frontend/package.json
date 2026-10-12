@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "build": "next build --webpack && (mkdir -p frontend && cp -r out frontend/ 2>/dev/null || true)",
     "start": "next start",
     "lint": "eslint"
   },

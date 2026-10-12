@@ -84,17 +84,19 @@ export default function DraggableGeomanToolbar({
     ? authoritativeAreaKm2.toFixed(2)
     : (aoiAreaHa > 0 ? (aoiAreaHa / 100).toFixed(2) : null);
 
+  const isOverLimit = aoiAreaHa > 50000;
+
   if (isCollapsed) {
     return (
-      <div className="flex flex-col bg-[#141B26]/95 backdrop-blur-md border border-[#2E3A4C] shadow-2xl rounded-sm overflow-hidden">
+      <div className={`flex flex-col bg-[#141B26]/95 backdrop-blur-md border ${isOverLimit ? 'border-[#E74C3C]' : 'border-[#2E3A4C]'} shadow-2xl rounded-sm overflow-hidden`}>
         <button
           onClick={() => setIsCollapsed(false)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-[#C8963E] bg-[#1B2331] hover:bg-[#212B3B] transition-colors cursor-pointer"
-          title="Expand Drawing Tools"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium ${isOverLimit ? 'text-[#E74C3C] bg-[#2E1818]' : 'text-[#C8963E] bg-[#1B2331]'} hover:bg-[#212B3B] transition-colors cursor-pointer`}
+          title={isOverLimit ? "AOI Area exceeds 50,000 ha limit" : "Expand Drawing Tools"}
         >
-          <Pentagon className="w-3.5 h-3.5 text-[#C8963E]" />
+          <Pentagon className={`w-3.5 h-3.5 ${isOverLimit ? 'text-[#E74C3C]' : 'text-[#C8963E]'}`} />
           <span className="font-semibold">AOI Tools</span>
-          {aoiKm2 && <span className="text-[9px] text-[#7C8798] mono">({aoiKm2} km²)</span>}
+          {aoiKm2 && <span className={`text-[9px] mono ${isOverLimit ? 'text-[#E74C3C] font-bold' : 'text-[#7C8798]'}`}>({aoiKm2} km²{isOverLimit ? ' !' : ''})</span>}
           <ChevronDown className="w-3 h-3 text-[#7C8798] ml-0.5" />
         </button>
       </div>
@@ -234,8 +236,15 @@ export default function DraggableGeomanToolbar({
 
       {/* Footer Area Readout */}
       {aoiKm2 && (
-        <div className="px-1.5 py-2 text-[9.5px] text-[#C8963E] mono text-center border-t border-[#2E3A4C] bg-[#1B2331] leading-tight">
-          {aoiKm2}<br/><span className="text-[8px] text-[#7C8798]">km²</span>
+        <div className={`px-1.5 py-2 text-[9.5px] mono text-center border-t leading-tight ${
+          isOverLimit
+            ? 'bg-[#2E1818] border-[#E74C3C] text-[#E74C3C]'
+            : 'bg-[#1B2331] border-[#2E3A4C] text-[#C8963E]'
+        }`}>
+          {aoiKm2}<br/>
+          <span className={`text-[8px] ${isOverLimit ? 'text-[#E74C3C] font-semibold' : 'text-[#7C8798]'}`}>
+            {isOverLimit ? '>500km² MAX' : 'km²'}
+          </span>
         </div>
       )}
 

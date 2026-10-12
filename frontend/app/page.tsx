@@ -75,21 +75,13 @@ export default function GeoMinerLandingPage() {
                 </button>
               </div>
             ) : (
-              <>
-                <Link 
-                  href="/login" 
-                  className="text-[13.5px] font-medium text-[#C2CCD6] hover:text-white transition-colors"
-                >
-                  Log in
-                </Link>
-                <Link 
-                  href="/signup" 
-                  className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[13.5px] px-4 py-2 rounded-lg inline-flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <span>Launch Workspace</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </>
+              <Link 
+                href="/app" 
+                className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[13.5px] px-4 py-2 rounded-lg inline-flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <span>Launch Workspace</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             )}
 
             {/* Mobile Menu trigger */}
@@ -118,9 +110,8 @@ export default function GeoMinerLandingPage() {
                 <button onClick={() => { logout(); setMobileMenuOpen(false); }} className="text-xs text-[#EF4444]">Sign out</button>
               </div>
             ) : (
-              <div className="pt-2 border-t border-[#1D262F] space-y-2">
-                <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-[#C2CCD6] hover:text-white">Log in</Link>
-                <Link href="/signup" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-[#B7E89F] font-semibold">Register Account →</Link>
+              <div className="pt-2 border-t border-[#1D262F]">
+                <Link href="/app" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-[#B7E89F] font-semibold">Launch Workspace →</Link>
               </div>
             )}
           </div>
@@ -155,10 +146,10 @@ export default function GeoMinerLandingPage() {
                 {/* CTAs */}
                 <div className="flex flex-wrap items-center gap-4 pt-2">
                   <Link 
-                    href={isAuthenticated ? "/app" : "/signup"} 
+                    href="/app" 
                     className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[14px] px-5 py-2.5 rounded-lg inline-flex items-center gap-2 transition-all shadow-sm"
                   >
-                    <span>{isAuthenticated ? "Open Workspace" : "Start targeting free"}</span>
+                    <span>Launch Studio (Instant Access)</span>
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                   <a 
@@ -167,6 +158,11 @@ export default function GeoMinerLandingPage() {
                   >
                     See how it works
                   </a>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 text-[11.5px] text-[#9EABB8] font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#B7E89F]" />
+                  <span>Open Source • Free &amp; Instant Access • No Login Required</span>
                 </div>
 
               </div>
@@ -275,7 +271,7 @@ export default function GeoMinerLandingPage() {
                       WORKSTATION VIEW
                     </span>
                     <Link 
-                      href={isAuthenticated ? "/app" : "/signup"} 
+                      href="/app" 
                       className="text-xs text-[#B7E89F] hover:underline inline-flex items-center gap-1 transition-colors"
                     >
                       <span>Open Live Engine</span>
@@ -548,26 +544,19 @@ export default function GeoMinerLandingPage() {
 
             <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
               <Link 
-                href={isAuthenticated ? "/app" : "/signup"} 
+                href="/app" 
                 className="bg-[#B7E89F] hover:bg-[#C8FFB2] text-[#0B0F12] font-medium text-[14px] px-5 py-2.5 rounded-lg inline-flex items-center gap-2 transition-all shadow-sm"
               >
-                <span>{isAuthenticated ? "Launch Workspace Now" : "Start For Free"}</span>
+                <span>Launch Workspace (Instant Access)</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
-              {isAuthenticated ? (
+              {isAuthenticated && (
                 <button 
                   onClick={logout}
                   className="bg-[#182028] hover:bg-[#202B36] text-white border border-[#2E3C4D] font-medium text-[14px] px-5 py-2.5 rounded-lg transition-all cursor-pointer"
                 >
                   <span>Sign out</span>
                 </button>
-              ) : (
-                <Link 
-                  href="/login" 
-                  className="bg-[#182028] hover:bg-[#202B36] text-white border border-[#2E3C4D] font-medium text-[14px] px-5 py-2.5 rounded-lg transition-all"
-                >
-                  <span>Sign in</span>
-                </Link>
               )}
             </div>
 
@@ -601,10 +590,8 @@ export default function GeoMinerLandingPage() {
               <a href="#models" className="hover:text-white transition-colors">Deposit models</a>
               <a href="#tools" className="hover:text-white transition-colors">Tools</a>
               <a href="#deliverables" className="hover:text-white transition-colors">Exports &amp; API</a>
-              {isAuthenticated ? (
+              {isAuthenticated && (
                 <button onClick={logout} className="hover:text-white transition-colors cursor-pointer">Sign out</button>
-              ) : (
-                <Link href="/login" className="hover:text-white transition-colors">Log in</Link>
               )}
             </div>
 

@@ -110,16 +110,12 @@ const calculateAOIArea = (polygonCoords: number[][]) => {
   return areaSqMeters / 10000;
 };
 
+// Open Access Safeguard: 50,000 hectares = 500 km² single-pass compute limit
+const MAX_AOI_HA = 50000;
+
 export default function GeoMinerPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
-
-  // Route protection: redirect unauthenticated users to login
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.replace('/login?redirect=/app');
-    }
-  }, [authLoading, isAuthenticated, router]);
+  const { user, isAuthenticated, logout } = useAuth();
 
   const [selectedCommodity, setSelectedCommodity] = useState<string>('porphyry_cu_au');
   const [locationLabel, setLocationLabel] = useState<string>('Escondida Cu-Au, Chile');
@@ -387,6 +383,13 @@ export default function GeoMinerPage() {
       };
 
       if (aoiCoords && aoiCoords.length >= 3) {
+        const areaHa = calculateAOIArea(aoiCoords);
+        if (areaHa > MAX_AOI_HA) {
+          setError(`AOI footprint (${Math.round(areaHa).toLocaleString()} ha / ${(areaHa / 100).toFixed(1)} km²) exceeds the maximum single-pass limit of 50,000 hectares (500 km²). Please delineate a more focused concession boundary to preserve satellite compute quotas.`);
+          setStatusMessage(`AOI exceeds maximum 50,000 ha limit (${Math.round(areaHa).toLocaleString()} ha).`);
+          setIsLoading(false);
+          return;
+        }
         payload.aoi = aoiCoords;
         payload.geometry = {
           type: 'Polygon',
@@ -419,6 +422,11 @@ export default function GeoMinerPage() {
       });
 
       if (!resp.ok) {
+        if (resp.status === 429) {
+          const errData = await resp.json().catch(() => ({}));
+          const retrySec = errData.retry_after || 60;
+          throw new Error(`Rate limit reached: Too many analysis queries. Please wait ${retrySec} seconds before submitting another exploration pass.`);
+        }
         const errData = await resp.json().catch(() => ({ detail: 'Targeting pipeline failed' }));
         const errorMessage = typeof errData.detail === 'string'
           ? errData.detail
@@ -604,21 +612,6 @@ export default function GeoMinerPage() {
     URL.revokeObjectURL(url);
   };
 
-  // Route protection guard screen while verifying auth or redirecting
-  if (authLoading || !isAuthenticated) {
-    return (
-      <div className="fixed inset-0 h-screen w-screen bg-[#0B0F12] flex flex-col items-center justify-center text-white z-[9999]">
-        <div className="w-8 h-8 rounded-full border-2 border-[#1E2735] border-t-[#B7E89F] animate-spin mb-4" />
-        <div className="font-mono text-xs uppercase tracking-[0.16em] text-[#B7E89F]">
-          Verifying Exploration Credentials...
-        </div>
-        <div className="text-[12.5px] text-[#9EABB8] mt-1 font-sans">
-          Protected Workspace · Redirecting to Sign In
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 flex flex-col h-[100dvh] w-full max-w-full overflow-hidden bg-[#141B26] text-[#B7BFCB]">
       
@@ -663,7 +656,7 @@ export default function GeoMinerPage() {
               <span className="hidden sm:inline">Field Guide</span>
               <span className="sm:hidden">Guide</span>
             </button>
-            {user && (
+            {user ? (
               <div className="hidden sm:flex items-center gap-2 border-l border-[#2E3A4C] pl-2.5 ml-1 shrink-0">
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#1E2638] border border-[#2E3A4C] rounded-xs text-[10.5px] font-mono text-[#E9E4D6]">
                   <UserIcon className="w-3 h-3 text-[#B7E89F]" />
@@ -676,6 +669,12 @@ export default function GeoMinerPage() {
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
+              </div>
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 border-l border-[#2E3A4C] pl-2.5 ml-1 shrink-0">
+                <span className="text-[10px] font-mono text-[#8CA0B3] px-2 py-0.5 bg-[#10161F] border border-[#232F3E] rounded-xs tracking-wider uppercase">
+                  OPEN ACCESS
+                </span>
               </div>
             )}
           </div>
@@ -710,9 +709,14 @@ export default function GeoMinerPage() {
 
           <button
             onClick={runProspectivityTargeting}
-            disabled={isLoading}
-            className={`hidden sm:flex bg-[#C8963E] text-[#1B140A] border-none px-3.5 py-1.5 sm:px-4 sm:py-2 text-[12px] sm:text-[12.5px] font-semibold tracking-[0.2px] items-center gap-2 transition-opacity cursor-pointer shadow-sm ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#d8a548]'
+            disabled={isLoading || aoiAreaHa > MAX_AOI_HA}
+            title={aoiAreaHa > MAX_AOI_HA ? `AOI area (${Math.round(aoiAreaHa).toLocaleString()} ha) exceeds maximum limit of 50,000 ha` : undefined}
+            className={`hidden sm:flex ${
+              aoiAreaHa > MAX_AOI_HA
+                ? 'bg-[#B0554A] text-white opacity-75 cursor-not-allowed'
+                : 'bg-[#C8963E] text-[#1B140A] hover:bg-[#d8a548] cursor-pointer'
+            } border-none px-3.5 py-1.5 sm:px-4 sm:py-2 text-[12px] sm:text-[12.5px] font-semibold tracking-[0.2px] items-center gap-2 transition-opacity shadow-sm ${
+              isLoading ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
             {isLoading ? (
@@ -720,7 +724,7 @@ export default function GeoMinerPage() {
             ) : (
               <span className="w-0 h-0 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent border-left-[6px] border-l-[#1B140A]" />
             )}
-            <span>{isLoading ? 'Targeting...' : 'Generate targets'}</span>
+            <span>{isLoading ? 'Targeting...' : (aoiAreaHa > MAX_AOI_HA ? 'Area > 50,000 ha' : 'Generate targets')}</span>
           </button>
         </div>
       </header>
@@ -870,7 +874,14 @@ export default function GeoMinerPage() {
                   setAreaStats(null);
                   setSelectedTargetId(null);
                   setTileUrls({});
-                  setStatusMessage(`Uploaded boundary with ${coords.length} vertices.`);
+                  const area = calculateAOIArea(coords);
+                  if (area > MAX_AOI_HA) {
+                    setError(`Uploaded boundary (${Math.round(area).toLocaleString()} ha / ${(area / 100).toFixed(1)} km²) exceeds the maximum 50,000 ha limit. Reduce area to run targeting.`);
+                    setStatusMessage(`Warning: Area exceeds 50,000 ha limit (${Math.round(area).toLocaleString()} ha).`);
+                  } else {
+                    setError(null);
+                    setStatusMessage(`Uploaded boundary with ${coords.length} vertices (${Math.round(area).toLocaleString()} ha).`);
+                  }
                 }}
                 aoiAreaHa={aoiAreaHa}
                 authoritativeAreaKm2={areaStats?.total_aoi_km2}
@@ -891,7 +902,14 @@ export default function GeoMinerPage() {
                 setSelectedTargetId(null);
                 setTileUrls({});
                 setActiveTool('pan');
-                setStatusMessage(`AOI established with ${coords.length} vertices. Click "Generate targets".`);
+                const area = calculateAOIArea(coords);
+                if (area > MAX_AOI_HA) {
+                  setError(`AOI footprint (${Math.round(area).toLocaleString()} ha / ${(area / 100).toFixed(1)} km²) exceeds the maximum 50,000 ha limit. Delineate a smaller area.`);
+                  setStatusMessage(`Warning: AOI exceeds 50,000 ha limit (${Math.round(area).toLocaleString()} ha).`);
+                } else {
+                  setError(null);
+                  setStatusMessage(`AOI established with ${coords.length} vertices (${Math.round(area).toLocaleString()} ha). Click "Generate targets".`);
+                }
               }}
               onTargetClick={(targetId) => {
                 setSelectedTargetId(targetId);

@@ -1,4 +1,5 @@
 import os
+import math
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
@@ -6,6 +7,8 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import ee
+
+from rate_limiter import IPRateLimiter, RateLimitMiddleware
 
 from gee_service import (
     initialize_gee, 
@@ -76,6 +79,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Open Access Rate Limiting: IP-based sliding window to protect GEE quotas
+rate_limit_enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("true", "1", "yes")
+rate_limiter = IPRateLimiter(
+    heavy_limit=int(os.getenv("RATE_LIMIT_HEAVY_PER_MIN", "20")),      # 20 targeting runs/min per IP
+    general_limit=int(os.getenv("RATE_LIMIT_GENERAL_PER_MIN", "60")),  # 60 metadata queries/min per IP
+    window_seconds=60
+)
+app.add_middleware(RateLimitMiddleware, limiter=rate_limiter, enabled=rate_limit_enabled)
+
 
 class ExplorationRequest(BaseModel):
     bbox: Optional[List[float]] = Field(None, description="Bounding Box [west, south, east, north]")
@@ -99,7 +111,44 @@ class ValidationSplitRequest(BaseModel):
     features: List[Dict[str, Any]] = Field(..., description="GeoJSON occurrence/background features")
 
 
-MAX_EXPLORATION_AOI_KM2 = 5000.0
+# Safeguards: 50,000 hectares = 500 km² single-pass exploration limit to protect GEE quotas
+MAX_EXPLORATION_AOI_HA = 50000.0
+MAX_EXPLORATION_AOI_KM2 = 500.0
+
+
+def estimate_polygon_area_ha(coords: List[Any]) -> float:
+    """Calculates spherical polygon area in hectares from [[lon, lat], ...] coordinates."""
+    if not coords or len(coords) < 3:
+        return 0.0
+    try:
+        total = 0.0
+        lat_rad = math.radians(float(coords[0][1]))
+        m_per_deg_lat = 111320.0
+        m_per_deg_lon = 111320.0 * math.cos(lat_rad)
+        n = len(coords)
+        for i in range(n - 1):
+            p1, p2 = coords[i], coords[i + 1]
+            x1, y1 = float(p1[0]) * m_per_deg_lon, float(p1[1]) * m_per_deg_lat
+            x2, y2 = float(p2[0]) * m_per_deg_lon, float(p2[1]) * m_per_deg_lat
+            total += (x1 * y2) - (x2 * y1)
+        p1, p2 = coords[-1], coords[0]
+        x1, y1 = float(p1[0]) * m_per_deg_lon, float(p1[1]) * m_per_deg_lat
+        x2, y2 = float(p2[0]) * m_per_deg_lon, float(p2[1]) * m_per_deg_lat
+        total += (x1 * y2) - (x2 * y1)
+        area_m2 = abs(total) / 2.0
+        return area_m2 / 10000.0
+    except Exception as e:
+        logger.warning(f"Error estimating polygon area: {e}")
+        return 0.0
+
+
+def estimate_bbox_area_ha(west: float, south: float, east: float, north: float) -> float:
+    """Calculates spherical bounding box area in hectares."""
+    mid_lat = (south + north) / 2.0
+    lat_rad = math.radians(mid_lat)
+    width_m = abs(east - west) * 111320.0 * math.cos(lat_rad)
+    height_m = abs(north - south) * 111320.0
+    return (width_m * height_m) / 10000.0
 
 
 def get_ee_geometry(req: ExplorationRequest) -> ee.Geometry:
@@ -127,33 +176,73 @@ def get_ee_geometry(req: ExplorationRequest) -> ee.Geometry:
 
 
 def validate_and_get_ee_geometry(req: ExplorationRequest) -> ee.Geometry:
-    """Validates AOI extent and returns bounded ee.Geometry to prevent memory overflow."""
-    geom = get_ee_geometry(req)
-    try:
-        bounds = geom.bounds().coordinates().getInfo()[0]
-        west, south, east, north = bounds[0][0], bounds[0][1], bounds[2][0], bounds[2][1]
+    """
+    Validates AOI extent and returns bounded ee.Geometry.
+    Enforces a strict 50,000 hectares (500 km²) ceiling to safeguard Google Earth Engine quotas.
+    """
+    # 1. Fast local geometric pre-check (instant rejection without burning GEE quota)
+    if req.aoi and len(req.aoi) >= 3:
+        local_ha = estimate_polygon_area_ha(req.aoi)
+        if local_ha > MAX_EXPLORATION_AOI_HA:
+            raise HTTPException(
+                status_code=422,
+                detail=f"AOI footprint ({local_ha:,.0f} ha / {local_ha/100:,.1f} km²) exceeds the maximum single-pass exploration limit of 50,000 hectares (500 km²) to preserve satellite compute quotas. Please define a more focused target area."
+            )
+    elif req.geometry and req.geometry.get("coordinates"):
+        geom_type = req.geometry.get("type", "Polygon")
+        coords = req.geometry["coordinates"][0] if geom_type == "Polygon" else req.geometry["coordinates"][0][0]
+        local_ha = estimate_polygon_area_ha(coords)
+        if local_ha > MAX_EXPLORATION_AOI_HA:
+            raise HTTPException(
+                status_code=422,
+                detail=f"AOI footprint ({local_ha:,.0f} ha / {local_ha/100:,.1f} km²) exceeds the maximum single-pass exploration limit of 50,000 hectares (500 km²) to preserve satellite compute quotas. Please define a more focused target area."
+            )
+    elif req.bbox and len(req.bbox) == 4:
+        west, south, east, north = req.bbox
         width_deg = abs(east - west)
         height_deg = abs(north - south)
-
-        if width_deg > 3.0 or height_deg > 3.0:
+        if width_deg > 1.2 or height_deg > 1.2:
             raise HTTPException(
                 status_code=422,
-                detail=f"AOI bounding box ({width_deg:.1f}° x {height_deg:.1f}°) exceeds maximum single-pass extent. Please zoom in or delineate a localized exploration concession boundary."
+                detail=f"AOI bounding box ({width_deg:.1f}° x {height_deg:.1f}°) exceeds maximum single-pass extent. Please zoom in to delineate a localized concession under 50,000 hectares (500 km²)."
             )
-
-        area_m2 = geom.area(maxError=200).getInfo()
-        area_km2 = area_m2 / 1_000_000.0
-        if area_km2 > MAX_EXPLORATION_AOI_KM2:
+        local_ha = estimate_bbox_area_ha(west, south, east, north)
+        if local_ha > MAX_EXPLORATION_AOI_HA:
             raise HTTPException(
                 status_code=422,
-                detail=f"AOI footprint ({area_km2:,.1f} km²) exceeds the maximum single-pass exploration limit of 5,000 km² for 20m high-resolution processing. Please define a more focused target area."
+                detail=f"AOI footprint ({local_ha:,.0f} ha / {local_ha/100:,.1f} km²) exceeds the maximum single-pass exploration limit of 50,000 hectares (500 km²) to preserve satellite compute quotas. Please define a more focused target area."
             )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning(f"AOI area pre-check warning: {e}")
+
+    # 2. Authoritative Earth Engine geometry validation (if GEE initialized)
+    geom = get_ee_geometry(req)
+    if initialize_gee():
+        try:
+            bounds = geom.bounds().coordinates().getInfo()[0]
+            west, south, east, north = bounds[0][0], bounds[0][1], bounds[2][0], bounds[2][1]
+            width_deg = abs(east - west)
+            height_deg = abs(north - south)
+
+            if width_deg > 1.2 or height_deg > 1.2:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"AOI bounding box ({width_deg:.1f}° x {height_deg:.1f}°) exceeds maximum single-pass extent. Please zoom in or delineate a localized exploration concession boundary under 50,000 ha."
+                )
+
+            area_m2 = geom.area(maxError=200).getInfo()
+            area_km2 = area_m2 / 1_000_000.0
+            area_ha = area_km2 * 100.0
+            if area_ha > MAX_EXPLORATION_AOI_HA:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"AOI footprint ({area_ha:,.0f} ha / {area_km2:,.1f} km²) exceeds the maximum single-pass exploration limit of 50,000 hectares (500 km²) for high-resolution satellite processing. Please define a more focused target area."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Authoritative GEE area check warning: {e}")
 
     return geom
+
 
 
 @app.get("/")
@@ -229,11 +318,11 @@ def get_spectral_layers(req: ExplorationRequest):
     Computes diagnostic hydrothermal alteration band ratios from Sentinel-2 VNIR-SWIR
     with topographic solar illumination correction, vegetation suppression, and mine disturbance mapping.
     """
+    roi = validate_and_get_ee_geometry(req)
     if not initialize_gee():
         raise HTTPException(status_code=503, detail="Earth Engine is not initialized.")
 
     try:
-        roi = validate_and_get_ee_geometry(req)
         s2_img = get_s2_composite(roi, req.start_date, req.end_date)
         dem_data = get_copernicus_dem(roi)
         
@@ -247,7 +336,7 @@ def get_spectral_layers(req: ExplorationRequest):
         hydroxyl_url = get_map_tile_url(spectral["hydroxyl_clay"].clip(roi), get_spectral_vis_params("hydroxyl_clay"))
         ferric_url = get_map_tile_url(spectral["ferric_iron"].clip(roi), get_spectral_vis_params("ferric_iron"))
         ferrous_url = get_map_tile_url(spectral["ferrous_iron"].clip(roi), get_spectral_vis_params("ferrous_iron"))
-        gossan_url = get_map_tile_url(spectral["gossan_index"].clip(roi), get_spectral_vis_params("gossan_index"))
+        gossan_index_url = get_map_tile_url(spectral["gossan_index"].clip(roi), get_spectral_vis_params("gossan_index"))
         alteration_shells_url = get_map_tile_url(spectral["alteration_shells"].clip(roi), get_spectral_vis_params("alteration_shells"))
         alteration_composite_url = get_map_tile_url(spectral["alteration_composite"].clip(roi), get_spectral_vis_params("alteration_composite"))
         disturbance_url = get_map_tile_url(spectral["mine_disturbance"].clip(roi), get_spectral_vis_params("mine_disturbance"))
@@ -258,7 +347,7 @@ def get_spectral_layers(req: ExplorationRequest):
                 "hydroxyl_clay": hydroxyl_url,
                 "ferric_iron": ferric_url,
                 "ferrous_iron": ferrous_url,
-                "gossan_index": gossan_url,
+                "gossan_index": gossan_index_url,
                 "alteration_shells": alteration_shells_url,
                 "alteration_composite": alteration_composite_url,
                 "mine_disturbance": disturbance_url
@@ -276,11 +365,11 @@ def get_structural_layers(req: ExplorationRequest):
     """
     Computes terrain/SAR edge-density proxies to assist structural interpretation.
     """
+    roi = validate_and_get_ee_geometry(req)
     if not initialize_gee():
         raise HTTPException(status_code=503, detail="Earth Engine is not initialized.")
 
     try:
-        roi = validate_and_get_ee_geometry(req)
         dem_data = get_copernicus_dem(roi)
         sar_data = get_sentinel1_sar(roi, req.start_date, req.end_date)
         struct_data = extract_structural_lineaments(dem_data["dem"], sar_data)
@@ -312,15 +401,16 @@ def get_structural_layers(req: ExplorationRequest):
 def generate_prospectivity(req: ExplorationRequest):
     """
     Runs the complete Mineral Prospectivity Engine:
-    1. Ingests multi-sensor data (Sentinel-2, Copernicus DEM, SAR).
-    2. Corrects topographic solar illumination in steep terrain.
-    3. Computes spectral indicators and terrain/SAR structural proxies.
-    4. Fuses layers based on target commodity profile.
-    5. Streams prospectivity heatmap tile URL.
-    6. Vectorizes high-ranking clusters into follow-up polygons with elevations.
+    1. Validates AOI extent within 50,000 ha quota guardrail.
+    2. Ingests multi-sensor data (Sentinel-2, Copernicus DEM, SAR).
+    3. Corrects topographic solar illumination in steep terrain.
+    4. Computes spectral indicators and terrain/SAR structural proxies.
+    5. Fuses layers based on target commodity profile.
+    6. Streams prospectivity heatmap tile URL.
+    7. Vectorizes high-ranking clusters into follow-up polygons with elevations.
     """
-    if not initialize_gee():
-        raise HTTPException(status_code=503, detail="Earth Engine is not initialized.")
+    # Delineate & validate AOI concession extent first
+    roi = validate_and_get_ee_geometry(req)
 
     profile = COMMODITY_PROFILES.get(req.commodity)
     if profile is None:
@@ -337,8 +427,10 @@ def generate_prospectivity(req: ExplorationRequest):
                 detail="Custom weights must be non-negative model evidence keys with a positive total."
             )
 
+    if not initialize_gee():
+        raise HTTPException(status_code=503, detail="Earth Engine is not initialized.")
+
     try:
-        roi = validate_and_get_ee_geometry(req)
         
         # 1. Fetch imagery
         s2_img = get_s2_composite(roi, req.start_date, req.end_date)
